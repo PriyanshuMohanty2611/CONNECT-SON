@@ -1,0 +1,16 @@
+{
+  "short_name": "CONNECT-ON",
+  "name": "CONNECT-ON - Privacy First Messenger",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0B0C10",
+  "theme_color": "#6366F1",
+  "display": "standalone",
+  "orientation": "portrait"
+}

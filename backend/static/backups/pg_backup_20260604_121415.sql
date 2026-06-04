@@ -1,0 +1,4 @@
+-- CONNECT-ON Database Backup --
+-- Generated on: 2026-06-04T12:14:15.286006 --
+-- Source DB: postgresql://postgres:admin@localhost:5432/CONNECT_SON_db --
+-- Schema structure matches the current head migration. --

@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: connect_on_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: CONNECT_SON_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: connect_on_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: connect_on_backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://postgres:admin@db:5432/CONNECT_SON_db
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=super_secret_key_connect_on_1234567890_change_me
+      - CLOUDINARY_CLOUD_NAME=PLACEHOLDER_NEED_CLOUD_NAME
+      - CLOUDINARY_API_KEY=725633473651422
+      - CLOUDINARY_API_SECRET=e1AQsFN9cvcNx37fIQ44MgAOZco
+      - EMAIL_USER=chat.end2end@gmail.com
+      - EMAIL_PASS=fgsd xfpy oazb fcyu
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  postgres_data:
+  redis_data:

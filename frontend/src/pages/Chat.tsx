@@ -1,0 +1,1434 @@
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { 
+  ArrowLeft, Search, Paperclip, Send, Mic, 
+  Settings as SettingsIcon, LogOut, Sparkles, Grid,
+  Lock, Check, CheckCheck, SmilePlus, CornerUpLeft, RefreshCw, 
+  Smile as EmojiIcon, MessageSquare, Image as ImageIcon,
+  UserX, Flag, MoreVertical, Gamepad2, Heart, Calendar as CalendarIcon, 
+  FileText, Cloud, ShieldCheck, Activity
+} from 'lucide-react'
+import EmojiPicker from 'emoji-picker-react'
+
+import { useAuth } from '../context/AuthContext'
+import { useSocket } from '../context/SocketContext'
+import { api } from '../services/api'
+import type { UserProfile } from '../context/AuthContext'
+import { NotificationsPopover } from '../components/NotificationsPopover'
+import { encryptMessage, decryptMessage } from '../services/crypto'
+
+interface Attachment {
+  id: string
+  file_url: string
+  file_type: string
+  file_name: string
+  file_size: number
+}
+
+interface Reaction {
+  id: string
+  message_id: string
+  user_id: string
+  reaction: string
+}
+
+interface MessageStatus {
+  id: string
+  message_id: string
+  user_id: string
+  status: 'sent' | 'delivered' | 'seen'
+}
+
+interface Message {
+  id: string
+  chat_id: string
+  sender_id: string
+  encrypted_content: string | null
+  nonce: string | null
+  is_encrypted: boolean
+  reply_to_id: string | null
+  created_at: string
+  edited_at: string | null
+  deleted_at: string | null
+  attachments: Attachment[]
+  reactions: Reaction[]
+  statuses: MessageStatus[]
+}
+
+interface Chat {
+  id: string
+  type: string
+  created_at: string
+  participants: UserProfile[]
+  last_message: Message | null
+  unread_count: number
+}
+
+export default function Chat() {
+  const navigate = useNavigate()
+  const { user, loading: authLoading, logout } = useAuth()
+  const { socket, onlineStatuses } = useSocket()
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/login')
+    }
+  }, [user, authLoading, navigate])
+
+  // Local constants to avoid typescript null warnings
+  const currentUserId = user?.id || ''
+  const currentUserProfile = user?.profile
+  const currentUserUsername = user?.username
+
+  // Chat lists states
+  const [chats, setChats] = useState<Chat[]>([])
+  const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [chatSearch, setChatSearch] = useState('')
+
+  // Loading/pagination states
+  const [loadingChats, setLoadingChats] = useState(true)
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [hasMoreMessages, setHasMoreMessages] = useState(true)
+  
+  // Message input states
+  const [inputText, setInputText] = useState('')
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const [attachmentsToSend, setAttachmentsToSend] = useState<string[]>([]) // uploaded file IDs
+  const [attachmentPreviews, setAttachmentPreviews] = useState<any[]>([]) // previews to show in input
+
+  // Typing state
+  const typingTimeoutRef = useRef<any>(null)
+  const [friendIsTyping, setFriendIsTyping] = useState(false)
+
+  // Voice Recording states
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingDuration, setRecordingDuration] = useState(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingTimerRef = useRef<any>(null)
+
+  // Scroll references
+  const messageEndRef = useRef<HTMLDivElement | null>(null)
+  const chatWindowRef = useRef<HTMLDivElement | null>(null)
+
+  // Decryption state & helper
+  const [decryptedContents, setDecryptedContents] = useState<Record<string, string>>({})
+
+  const getMessageText = (msg: Message | null) => {
+    if (!msg) return ''
+    if (msg.is_encrypted) {
+      return decryptedContents[msg.id] || '🔒 [Decrypting...]'
+    }
+    return msg.encrypted_content || ''
+  }
+
+  useEffect(() => {
+    const decryptAll = async () => {
+      const newDecrypted: Record<string, string> = { ...decryptedContents }
+      let updated = false
+
+      // Collect all candidate messages to decrypt
+      const candidateMessages: Message[] = [...messages]
+      chats.forEach(c => {
+        if (c.last_message) {
+          candidateMessages.push(c.last_message)
+        }
+      })
+
+      for (const msg of candidateMessages) {
+        if (msg.is_encrypted && msg.encrypted_content && !newDecrypted[msg.id]) {
+          // Find the chat of this message
+          const msgChat = chats.find(c => c.id === msg.chat_id) || selectedChat
+          if (!msgChat) continue
+
+          const isMe = msg.sender_id === currentUserId
+          let keyToUse = null
+
+          if (isMe) {
+            // Decrypt with recipient's public key (the other user in direct chat)
+            const partner = msgChat.participants.find(p => p.id !== currentUserId)
+            keyToUse = partner?.profile?.public_key
+          } else {
+            // Decrypt with sender's public key
+            const sender = msgChat.participants.find(p => p.id === msg.sender_id)
+            keyToUse = sender?.profile?.public_key
+          }
+
+          if (keyToUse && msg.nonce) {
+            try {
+              const decrypted = await decryptMessage(msg.encrypted_content, msg.nonce, keyToUse, currentUserUsername || '')
+              newDecrypted[msg.id] = decrypted
+              updated = true
+            } catch (err) {
+              newDecrypted[msg.id] = '🔒 [Decryption failed]'
+              updated = true
+            }
+          } else {
+            newDecrypted[msg.id] = '🔒 [Decrypted: missing key]'
+            updated = true
+          }
+        }
+      }
+
+      if (updated) {
+        setDecryptedContents(newDecrypted)
+      }
+    }
+
+    if (user) {
+      decryptAll()
+    }
+  }, [messages, chats, selectedChat, currentUserId, currentUserUsername, user])
+
+  // Fetch Chats
+  const loadChats = async () => {
+    setLoadingChats(true)
+    const { data } = await api.get<Chat[]>('/chats/')
+    if (data) {
+      setChats(data)
+    }
+    setLoadingChats(false)
+  }
+
+  // Fetch Messages for a specific chat (initial)
+  const loadMessages = async (chatId: string) => {
+    setLoadingMessages(true)
+    setHasMoreMessages(true)
+    const { data } = await api.get<Message[]>(`/chats/${chatId}/messages?limit=30`)
+    if (data) {
+      // API returns messages descending (most recent first)
+      setMessages(data.reverse())
+      if (data.length < 30) {
+        setHasMoreMessages(false)
+      }
+      // Scroll to bottom
+      setTimeout(() => scrollToBottom(), 50)
+    }
+    setLoadingMessages(false)
+  }
+
+  // Fetch more messages (pagination on scroll to top)
+  const loadMoreMessages = async () => {
+    if (loadingMessages || !hasMoreMessages || !selectedChat || messages.length === 0) return
+
+    setLoadingMessages(true)
+    const oldestTimestamp = messages[0].created_at
+    const { data } = await api.get<Message[]>(
+      `/chats/${selectedChat.id}/messages?before=${encodeURIComponent(oldestTimestamp)}&limit=30`
+    )
+
+    if (data && data.length > 0) {
+      // Store scroll position to prevent jumping
+      const chatWindow = chatWindowRef.current
+      const prevScrollHeight = chatWindow ? chatWindow.scrollHeight : 0
+      const prevScrollTop = chatWindow ? chatWindow.scrollTop : 0
+
+      setMessages(prev => [...data.reverse(), ...prev])
+      
+      if (data.length < 30) {
+        setHasMoreMessages(false)
+      }
+
+      // Restore scroll height diff
+      setTimeout(() => {
+        if (chatWindow) {
+          chatWindow.scrollTop = chatWindow.scrollHeight - prevScrollHeight + prevScrollTop
+        }
+      }, 30)
+    } else {
+      setHasMoreMessages(false)
+    }
+    setLoadingMessages(false)
+  }
+
+  // Handlers for Scroll
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (e.currentTarget.scrollTop === 0) {
+      loadMoreMessages()
+    }
+  }
+
+  const scrollToBottom = () => {
+    messageEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  // Load chats on load
+  useEffect(() => {
+    if (user) {
+      loadChats()
+    }
+  }, [user])
+
+  // Select Chat actions
+  const selectChatRoom = (chat: Chat) => {
+    setSelectedChat(chat)
+    setMessages([])
+    setReplyingTo(null)
+    setAttachmentsToSend([])
+    setAttachmentPreviews([])
+    setChatMood(null)
+    setSmartReplies([])
+    loadMessages(chat.id)
+    fetchChatMood(chat.id)
+
+    // Join room on Socket.IO
+    if (socket) {
+      socket.emit('join_chat', { chat_id: chat.id })
+      
+      // Mark unread messages in this chat as seen
+      setChats(prev => prev.map(c => c.id === chat.id ? { ...c, unread_count: 0 } : c))
+    }
+  }
+
+  // Moderation state & handlers
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportReason, setReportReason] = useState('')
+  const [showOptionsDropdown, setShowOptionsDropdown] = useState(false)
+
+  const handleBlockPartner = async () => {
+    if (!selectedChat) return
+    const partner = getChatPartner(selectedChat)
+    if (!partner) return
+
+    if (!window.confirm(`Are you sure you want to block ${partner.profile?.full_name || partner.username}?`)) {
+      return
+    }
+
+    const { error } = await api.post(`/friends/block/${partner.id}`)
+    if (error) {
+      alert(error)
+    } else {
+      alert('User blocked successfully.')
+      setSelectedChat(null)
+      loadChats()
+    }
+    setShowOptionsDropdown(false)
+  }
+
+  const handleReportPartner = async () => {
+    if (!selectedChat || !reportReason.trim()) return
+    const partner = getChatPartner(selectedChat)
+    if (!partner) return
+
+    const { error } = await api.post(`/users/report`, {
+      reported_id: partner.id,
+      reason: reportReason.trim()
+    })
+
+    if (error) {
+      alert(error)
+    } else {
+      alert('Report submitted successfully.')
+      setShowReportModal(false)
+      setReportReason('')
+    }
+    setShowOptionsDropdown(false)
+  }
+
+  // AI summary state & handler
+  const [showSummaryModal, setShowSummaryModal] = useState(false)
+  const [chatSummary, setChatSummary] = useState('')
+  const [loadingSummary, setLoadingSummary] = useState(false)
+
+  // AI Mood & Smart Replies States
+  const [chatMood, setChatMood] = useState<{ mood: string; description: string } | null>(null)
+  const [smartReplies, setSmartReplies] = useState<string[]>([])
+
+  const fetchChatMood = async (chatId: string) => {
+    const { data } = await api.get<{ mood: string; description: string }>(`/chats/${chatId}/mood`)
+    if (data) setChatMood(data)
+  }
+
+  const translateMsg = async (msgId: string, txt: string, lang: string) => {
+    const { data } = await api.post<{ translated_text: string }>('/ai/translate', { text: txt, target_lang: lang })
+    if (data) {
+      setDecryptedContents(prev => ({
+        ...prev,
+        [msgId]: data.translated_text
+      }))
+    }
+  }
+
+  // Load Smart Replies on message update
+  useEffect(() => {
+    if (!selectedChat || messages.length === 0) {
+      setSmartReplies([])
+      return
+    }
+    const fetchReplies = async () => {
+      const { data } = await api.get<{ replies: string[] }>(`/chats/${selectedChat.id}/smart-reply`)
+      if (data) setSmartReplies(data.replies)
+    }
+    fetchReplies()
+  }, [messages, selectedChat])
+
+  const fetchChatSummary = async () => {
+    if (!selectedChat) return
+    setLoadingSummary(true)
+    const { data, error } = await api.get<{ summary: string }>(`/chats/${selectedChat.id}/summary`)
+    setLoadingSummary(false)
+    if (data) {
+      setChatSummary(data.summary)
+      setShowSummaryModal(true)
+    } else if (error) {
+      alert(`Failed to fetch AI summary: ${error}`)
+    }
+  }
+
+  // Listen to Socket.IO events
+  useEffect(() => {
+    if (!socket) return
+
+    // Message handler
+    const handleNewMessage = (msg: Message) => {
+      if (selectedChat && msg.chat_id === selectedChat.id) {
+        setMessages(prev => [...prev, msg])
+        scrollToBottom()
+        // Trigger seen status tick immediately
+        socket.emit('message_status', { message_id: msg.id, status: 'seen' })
+      } else {
+        // Increment unread count for that chat
+        setChats(prev => prev.map(c => {
+          if (c.id === msg.chat_id) {
+            return {
+              ...c,
+              last_message: msg,
+              unread_count: c.unread_count + 1
+            }
+          }
+          return c
+        }))
+      }
+    }
+
+    // Status ticks handler
+    const handleStatusChange = (data: { message_id: string; user_id: string; status: 'sent' | 'delivered' | 'seen'; chat_id: string }) => {
+      if (selectedChat && data.chat_id === selectedChat.id) {
+        setMessages(prev => prev.map(m => {
+          if (m.id === data.message_id) {
+            const hasStatus = m.statuses.some(s => s.user_id === data.user_id)
+            const updatedStatuses = hasStatus
+              ? m.statuses.map(s => s.user_id === data.user_id ? { ...s, status: data.status, updated_at: new Date().toISOString() } : s)
+              : [...m.statuses, { id: Math.random().toString(), message_id: m.id, user_id: data.user_id, status: data.status, updated_at: new Date().toISOString() }]
+            return { ...m, statuses: updatedStatuses as any[] }
+          }
+          return m
+        }))
+      }
+    }
+
+    // Reaction handler
+    const handleReaction = (data: { message_id: string; user_id: string; reaction: string | null; chat_id: string; removed: boolean }) => {
+      if (selectedChat && data.chat_id === selectedChat.id) {
+        setMessages(prev => prev.map(m => {
+          if (m.id === data.message_id) {
+            const updatedReactions = data.removed
+              ? m.reactions.filter(r => r.user_id !== data.user_id)
+              : m.reactions.some(r => r.user_id === data.user_id)
+              ? m.reactions.map(r => r.user_id === data.user_id ? { ...r, reaction: data.reaction || '' } : r)
+              : [...m.reactions, { id: Math.random().toString(), message_id: m.id, user_id: data.user_id, reaction: data.reaction || '' }]
+            return { ...m, reactions: updatedReactions }
+          }
+          return m
+        }))
+      }
+    }
+
+    // Typing handler
+    const handleTyping = (data: { chat_id: string; user_id: string; is_typing: boolean }) => {
+      if (selectedChat && data.chat_id === selectedChat.id) {
+        setFriendIsTyping(data.is_typing)
+      }
+    }
+
+    socket.on('new_message', handleNewMessage)
+    socket.on('status_change', handleStatusChange)
+    socket.on('new_reaction', handleReaction)
+    socket.on('typing', handleTyping)
+
+    return () => {
+      socket.off('new_message', handleNewMessage)
+      socket.off('status_change', handleStatusChange)
+      socket.off('new_reaction', handleReaction)
+      socket.off('typing', handleTyping)
+    }
+  }, [socket, selectedChat])
+
+  // Trigger typing notification
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputText(e.target.value)
+
+    if (socket && selectedChat) {
+      socket.emit('typing', { chat_id: selectedChat.id, is_typing: true })
+
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit('typing', { chat_id: selectedChat.id, is_typing: false })
+      }, 2000)
+    }
+  }
+
+  // Send message
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const text = inputText.trim()
+    if ((!text && attachmentsToSend.length === 0) || !selectedChat) return
+
+    let encryptedContent = text || null
+    let nonce: string | null = null
+    let isEncrypted = false
+
+    if (text && selectedChat.type === 'direct') {
+      const partner = getChatPartner(selectedChat)
+      const partnerPubKey = partner?.profile?.public_key
+      if (partnerPubKey) {
+        try {
+          const enc = await encryptMessage(text, partnerPubKey, currentUserUsername || '')
+          encryptedContent = enc.ciphertext
+          nonce = enc.nonce
+          isEncrypted = true
+        } catch (err) {
+          console.error("Encryption failed, sending as fallback plaintext:", err)
+        }
+      }
+    }
+
+    const payload = {
+      chat_id: selectedChat.id,
+      encrypted_content: encryptedContent,
+      nonce: nonce,
+      is_encrypted: isEncrypted,
+      reply_to_id: replyingTo ? replyingTo.id : null,
+      attachment_ids: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
+    }
+
+    if (socket) {
+      socket.emit('send_message', payload, (res: any) => {
+        if (res && res.error) {
+          alert(`Error sending: ${res.error}`)
+        }
+      })
+    }
+
+    setInputText('')
+    setReplyingTo(null)
+    setAttachmentsToSend([])
+    setAttachmentPreviews([])
+    setShowEmojiPicker(false)
+  }
+
+  // Voice Recording Handlers
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaRecorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(track => track.stop())
+
+        if (audioChunksRef.current.length === 0) return
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const file = new File([audioBlob], `voicenote_${Date.now()}.webm`, { type: 'audio/webm' })
+
+        setUploadingFile(true)
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const { data, error } = await api.post<Attachment>(
+          `/chats/attachments?chat_id=${selectedChat?.id}`,
+          formData
+        )
+        setUploadingFile(false)
+
+        if (data) {
+          const payload = {
+            chat_id: selectedChat?.id,
+            encrypted_content: null,
+            nonce: null,
+            is_encrypted: false,
+            attachment_ids: [data.id]
+          }
+          if (socket) {
+            socket.emit('send_message', payload)
+          }
+        } else {
+          alert(`Failed to upload voice note: ${error || 'Unknown error'}`)
+        }
+      }
+
+      mediaRecorder.start()
+      setIsRecording(true)
+      setRecordingDuration(0)
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1)
+      }, 1000)
+
+    } catch (err: any) {
+      alert(`Could not start voice recording: ${err.message || err}`)
+    }
+  }
+
+  const stopRecording = (shouldSend: boolean) => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current)
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      if (!shouldSend) {
+        audioChunksRef.current = []
+      }
+      mediaRecorderRef.current.stop()
+    }
+
+    setIsRecording(false)
+    setRecordingDuration(0)
+  }
+
+  const formatDuration = (secs: number) => {
+    const minutes = Math.floor(secs / 60)
+    const seconds = secs % 60
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
+  }
+
+  // Emoji selection helper
+  const onEmojiClick = (emojiData: any) => {
+    setInputText(prev => prev + emojiData.emoji)
+  }
+
+  // File attachments helper
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0 || !selectedChat) return
+
+    setUploadingFile(true)
+    setShowAttachMenu(false)
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+
+      if (file.size > 20 * 1024 * 1024) {
+        alert('File size exceeds the 20MB limit.')
+        continue
+      }
+
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const { data, error } = await api.post<Attachment>(
+        `/chats/attachments?chat_id=${selectedChat.id}`,
+        formData,
+        { headers: {} }
+      )
+
+      if (data) {
+        setAttachmentsToSend(prev => [...prev, data.id])
+        setAttachmentPreviews(prev => [...prev, {
+          name: file.name,
+          type: file.type.startsWith('image/') ? 'image' : 'file',
+          url: data.file_url
+        }])
+      } else {
+        alert(`Upload failed: ${error || 'Unknown error'}`)
+      }
+    }
+    setUploadingFile(false)
+  }
+
+  // Message Reaction handler
+  const sendReaction = (messageId: string, emoji: string) => {
+    if (socket) {
+      socket.emit('add_reaction', { message_id: messageId, reaction: emoji })
+    }
+  }
+
+  // Get other participant in Direct Chat
+  const getChatPartner = (chat: Chat) => {
+    return chat.participants.find(p => p.id !== currentUserId)
+  }
+
+  // Filter chats by search query
+  const filteredChats = chats.filter(c => {
+    const partner = getChatPartner(c)
+    const name = partner?.profile?.full_name || partner?.username || ''
+    return name.toLowerCase().includes(chatSearch.toLowerCase())
+  })
+
+  if (!user) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-transparent">
+        <div className="text-center text-[var(--text-secondary)]">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-[var(--accent)]" />
+          <p>Redirecting to login...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-screen w-screen overflow-hidden bg-transparent text-[var(--text-primary)]">
+      {/* Background decoration */}
+      <div className="absolute top-[-30%] right-[-10%] w-[50%] h-[50%] rounded-full bg-[var(--accent)] opacity-[0.08] blur-[150px] pointer-events-none" />
+      
+      {/* SIDEBAR NAVIGATION */}
+      <aside className="w-64 h-full glass-panel rounded-none border-y-0 border-l-0 flex flex-col justify-between p-6 z-20 flex-shrink-0">
+        <div className="space-y-8">
+          <div className="flex items-center gap-3 px-2">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[var(--accent)] to-pink-500 flex items-center justify-center shadow-lg">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-black tracking-wider text-[var(--accent)] glow-text leading-none">CONNECT-ON</h1>
+              <span className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase tracking-widest">PRO HUB</span>
+            </div>
+          </div>
+
+          <nav className="space-y-1">
+            <button
+              onClick={() => navigate('/', { state: { tab: 'discovery' } })}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+            >
+              <Grid className="w-4 h-4" />
+              <span>User Discovery</span>
+            </button>
+
+            <button
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer bg-[var(--accent)] text-white shadow-lg"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span>Secure Chats</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/', { state: { tab: 'stories' } })}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+            >
+              <ImageIcon className="w-4 h-4" />
+              <span>Stories</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/', { state: { tab: 'gaming' } })}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+            >
+              <Gamepad2 className="w-4 h-4" />
+              <span>Gaming Hub</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/', { state: { tab: 'relationship' } })}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+            >
+              <Heart className="w-4 h-4" />
+              <span>Relationship Hub</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/', { state: { tab: 'calendar' } })}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+            >
+              <CalendarIcon className="w-4 h-4" />
+              <span>Smart Calendar</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/', { state: { tab: 'notes' } })}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Notes Hub</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/', { state: { tab: 'productivity' } })}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+            >
+              <Activity className="w-4 h-4" />
+              <span>Productivity Hub</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/', { state: { tab: 'cloud' } })}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+            >
+              <Cloud className="w-4 h-4" />
+              <span>Personal Cloud</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/', { state: { tab: 'security' } })}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Security Hub</span>
+            </button>
+
+            <button
+              onClick={() => navigate('/settings')}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
+            >
+              <SettingsIcon className="w-4 h-4" />
+              <span>Settings</span>
+            </button>
+          </nav>
+        </div>
+
+        <div className="pt-4 border-t border-[var(--border-color)] space-y-4">
+          <div className="flex items-center gap-3 px-1">
+            <div className="relative">
+              <img 
+                src={currentUserProfile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'} 
+                alt="Profile" 
+                className="w-10 h-10 rounded-full object-cover border border-[var(--accent)]"
+              />
+              <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[var(--bg-main)]" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-sm font-bold truncate leading-snug">{currentUserProfile?.full_name || currentUserUsername}</h4>
+              <p className="text-xs text-[var(--text-secondary)] truncate">@{currentUserUsername}</p>
+            </div>
+          </div>
+
+          <button 
+            onClick={logout}
+            className="w-full py-2.5 rounded-xl border border-[var(--border-color)] hover:bg-rose-500/10 hover:border-rose-500/20 text-rose-500 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ACTIVE CHATS COLUMN (Left Side) */}
+      <section className="w-80 h-full border-r border-[var(--border-color)] flex flex-col z-10 flex-shrink-0 glass-panel rounded-none border-y-0 bg-opacity-10">
+        <div className="p-6 border-b border-[var(--border-color)] space-y-4 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-extrabold tracking-tight text-white">Chats</h2>
+            <NotificationsPopover />
+          </div>
+          
+          <div className="relative">
+            <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
+            <input 
+              type="text" 
+              placeholder="Search chat partner..."
+              value={chatSearch}
+              onChange={(e) => setChatSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 glass-input text-xs"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          {loadingChats ? (
+            <div className="py-20 text-center">
+              <RefreshCw className="w-6 h-6 animate-spin text-[var(--accent)] mx-auto" />
+            </div>
+          ) : filteredChats.length === 0 ? (
+            <div className="text-center py-20 text-[var(--text-secondary)] text-xs">
+              No conversations found.
+            </div>
+          ) : (
+            filteredChats.map((c) => {
+              const partner = getChatPartner(c)
+              const status = partner ? (onlineStatuses[partner.id] || partner.profile?.presence_status || 'offline') : 'offline'
+              const active = selectedChat?.id === c.id
+
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => selectChatRoom(c)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all cursor-pointer text-left border ${
+                    active 
+                      ? 'bg-gradient-to-r from-[var(--accent)] to-[#0052cc] text-white border-white/10 shadow-lg shadow-[var(--accent-glow)] scale-[1.02]' 
+                      : 'border-transparent hover:bg-white/5 text-[var(--text-secondary)] hover:text-white hover:translate-x-1'
+                  }`}
+                >
+                  <div className="relative flex-shrink-0">
+                    <img 
+                      src={partner?.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'} 
+                      alt="" 
+                      className="w-11 h-11 rounded-full object-cover border border-[var(--border-color)]"
+                    />
+                    <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-[var(--bg-main)] ${
+                      status === 'online' ? 'bg-emerald-500' : status === 'away' ? 'bg-amber-500' : status === 'busy' ? 'bg-red-500' : 'bg-slate-500'
+                    }`} />
+                  </div>
+                  
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline mb-0.5">
+                      <h4 className="text-sm font-bold truncate text-white">
+                        {partner?.profile?.full_name || partner?.username}
+                      </h4>
+                      {c.last_message && (
+                        <span className="text-[10px] opacity-60 flex-shrink-0 ml-1">
+                          {new Date(c.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs truncate max-w-[150px] opacity-80">
+                        {getMessageText(c.last_message) || (c.last_message?.attachments?.length ? 'Shared a file' : 'Start chatting...')}
+                      </p>
+                      {c.unread_count > 0 && (
+                        <span className="h-5 min-w-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center">
+                          {c.unread_count}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              )
+            })
+          )}
+        </div>
+      </section>
+
+      {/* SECURE MESSAGING CHAT WINDOW */}
+      <section className="flex-1 h-full flex flex-col z-10 overflow-hidden bg-transparent">
+        <AnimatePresence mode="wait">
+          {!selectedChat ? (
+            <motion.div 
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex-1 flex flex-col items-center justify-center text-center p-8"
+            >
+              <div className="max-w-md space-y-6">
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-[var(--accent)] to-pink-500 flex items-center justify-center mx-auto shadow-2xl shadow-[var(--accent-glow)]">
+                  <Lock className="w-10 h-10 text-white" />
+                </div>
+                <h3 className="text-2xl font-black tracking-tight glow-text">End-to-End Encrypted Messaging</h3>
+                <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+                  Select a friend from the conversations sidebar to begin exchanging secure messages. Your key exchange handshake will be completed automatically.
+                </p>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="active-chat"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex-1 flex flex-col h-full overflow-hidden"
+            >
+              {/* Chat Header */}
+              {(() => {
+                const partner = getChatPartner(selectedChat)
+                const status = partner ? (onlineStatuses[partner.id] || partner.profile?.presence_status || 'offline') : 'offline'
+                return (
+                  <header className="h-16 border-b border-[var(--border-color)] px-8 flex items-center justify-between flex-shrink-0 glass-panel rounded-none border-t-0 border-x-0 bg-opacity-30">
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={() => setSelectedChat(null)}
+                        className="md:hidden p-1 rounded-lg border border-[var(--border-color)]"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                      <div className="relative">
+                        <img 
+                          src={partner?.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'} 
+                          alt="" 
+                          className="w-10 h-10 rounded-full object-cover border border-[var(--border-color)]"
+                        />
+                        <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[var(--bg-main)] ${
+                          status === 'online' ? 'bg-emerald-500' : status === 'away' ? 'bg-amber-500' : status === 'busy' ? 'bg-red-500' : 'bg-slate-500'
+                        }`} />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold leading-tight">{partner?.profile?.full_name || partner?.username}</h4>
+                        <span className="text-[10px] text-[var(--text-secondary)] font-semibold capitalize tracking-wide">{status}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1 bg-[var(--accent-glow)] border border-[var(--accent)]/20 px-3 py-1.5 rounded-full text-[10px] text-[var(--accent)] font-bold">
+                        <Lock className="w-3.5 h-3.5" />
+                        <span className="uppercase tracking-widest">E2EE Secured</span>
+                      </div>
+
+                      {chatMood && (
+                        <div 
+                          className="flex items-center gap-1 bg-pink-500/10 border border-pink-500/20 px-3 py-1.5 rounded-full text-[10px] text-pink-400 font-bold"
+                          title={chatMood.description}
+                        >
+                          <span>🎭 Mood: {chatMood.mood}</span>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={fetchChatSummary}
+                        disabled={loadingSummary}
+                        className="flex items-center gap-1 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 px-3 py-1.5 rounded-full text-[10px] text-indigo-400 font-bold transition-all cursor-pointer disabled:opacity-50"
+                        title="AI Summarize Chat"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                        <span className="uppercase tracking-wider">AI Summary</span>
+                      </button>
+
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowOptionsDropdown(!showOptionsDropdown)}
+                          className="p-1.5 rounded-lg border border-[var(--border-color)] hover:bg-[var(--border-color)] transition-all cursor-pointer text-[var(--text-secondary)] hover:text-white"
+                          title="Options"
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+
+                        {showOptionsDropdown && (
+                          <div className="absolute right-0 mt-2 w-40 glass-card p-1.5 shadow-2xl border border-[var(--border-color)] z-40 text-xs">
+                            <button
+                              onClick={() => {
+                                setShowOptionsDropdown(false)
+                                setShowReportModal(true)
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--border-color)] hover:text-white transition-all text-left cursor-pointer font-semibold"
+                            >
+                              <Flag className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Report User</span>
+                            </button>
+                            <button
+                              onClick={handleBlockPartner}
+                              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-rose-400 hover:bg-rose-500/10 hover:text-rose-500 transition-all text-left cursor-pointer font-semibold"
+                            >
+                              <UserX className="w-3.5 h-3.5 text-rose-500" />
+                              <span>Block User</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </header>
+                )
+              })()}
+
+              {/* Chat Message Scroll Content */}
+              <div 
+                ref={chatWindowRef}
+                onScroll={handleScroll}
+                className="flex-1 overflow-y-auto p-8 space-y-6"
+              >
+                {loadingMessages && (
+                  <div className="text-center py-4">
+                    <RefreshCw className="w-5 h-5 animate-spin mx-auto text-[var(--accent)]" />
+                  </div>
+                )}
+                
+                {messages.map((msg) => {
+                  const isMe = msg.sender_id === currentUserId
+                  const otherStatus = msg.statuses.find(s => s.user_id !== currentUserId)
+                  const tickStatus = otherStatus?.status || 'sent'
+                  
+                  return (
+                    <div 
+                      key={msg.id}
+                      className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                    >
+                      {msg.reply_to_id && (() => {
+                        const repliedMsg = messages.find(m => m.id === msg.reply_to_id)
+                        return (
+                          <div className="text-[10px] text-[var(--text-secondary)] mb-1 flex items-center gap-1 opacity-70 bg-[var(--border-color)] px-2 py-0.5 rounded-md">
+                            <CornerUpLeft className="w-3 h-3" />
+                            <span>Replied: {getMessageText(repliedMsg || null) || 'shared item'}</span>
+                          </div>
+                        )
+                      })()}
+
+                      <div className="flex items-center gap-2 group max-w-[70%]">
+                        {!isMe && (
+                          <button 
+                            onClick={() => sendReaction(msg.id, '❤️')}
+                            className="opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-card)] text-xs cursor-pointer hover:bg-[var(--border-color)]"
+                            title="React with Love"
+                          >
+                            <SmilePlus className="w-3.5 h-3.5 text-[var(--text-secondary)] hover:text-red-500" />
+                          </button>
+                        )}
+
+                        <div className={`p-4 rounded-2xl text-sm relative border backdrop-blur-md transition-all duration-300 ${
+                          isMe 
+                            ? 'bg-gradient-to-br from-[var(--accent)] to-[#0052cc] text-white border-[var(--accent)]/30 rounded-tr-none shadow-[var(--accent-glow)] shadow-md hover:shadow-lg' 
+                            : 'bg-white/5 border-white/10 text-[var(--text-primary)] rounded-tl-none hover:bg-white/8'
+                        }`}>
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="mb-2 space-y-2">
+                              {msg.attachments.map(att => {
+                                if (att.file_type === 'audio') {
+                                  return (
+                                    <div key={att.id} className="p-3.5 rounded-xl bg-black/40 border border-white/5 flex flex-col gap-3 min-w-[240px] shadow-lg">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          <Mic className="w-4 h-4 text-rose-500 animate-pulse" />
+                                          <span className="text-[10px] uppercase font-black tracking-widest text-[var(--text-secondary)]">Secure Voice Note</span>
+                                        </div>
+                                        <div className="voice-waveform">
+                                          <span className="voice-waveform-bar active" style={{ animationDelay: '0.1s' }} />
+                                          <span className="voice-waveform-bar active" style={{ animationDelay: '0.3s' }} />
+                                          <span className="voice-waveform-bar active" style={{ animationDelay: '0.5s' }} />
+                                          <span className="voice-waveform-bar active" style={{ animationDelay: '0.2s' }} />
+                                          <span className="voice-waveform-bar active" style={{ animationDelay: '0.4s' }} />
+                                        </div>
+                                      </div>
+                                      <audio
+                                        src={att.file_url}
+                                        controls
+                                        className="w-full h-8 accent-[var(--accent)] bg-transparent outline-none rounded-md opacity-80"
+                                      />
+                                    </div>
+                                  )
+                                }
+                                return (
+                                  <a 
+                                    key={att.id} 
+                                    href={att.file_url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="block p-2 rounded-xl bg-black/20 hover:bg-black/30 transition-all text-xs font-semibold"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <Paperclip className="w-4 h-4" />
+                                      <span className="truncate max-w-[150px]">{att.file_name}</span>
+                                    </div>
+                                  </a>
+                                )
+                              })}
+                            </div>
+                          )}
+
+                          <p className="leading-relaxed break-words">{getMessageText(msg)}</p>
+                          
+                          {msg.encrypted_content && (
+                            <div className="mt-2 flex gap-2 items-center text-[9px] font-semibold opacity-70 select-none">
+                              <span className="text-[8px] text-[var(--text-secondary)] font-bold">AI TRANSLATE:</span>
+                              <button 
+                                onClick={() => translateMsg(msg.id, getMessageText(msg), 'hindi')} 
+                                className="hover:underline text-indigo-300 font-bold cursor-pointer"
+                              >
+                                Hindi
+                              </button>
+                              <button 
+                                onClick={() => translateMsg(msg.id, getMessageText(msg), 'japanese')} 
+                                className="hover:underline text-indigo-300 font-bold cursor-pointer"
+                              >
+                                Japanese
+                              </button>
+                              <button 
+                                onClick={() => translateMsg(msg.id, getMessageText(msg), 'english')} 
+                                className="hover:underline text-indigo-300 font-bold cursor-pointer"
+                              >
+                                Original
+                              </button>
+                            </div>
+                          )}
+
+                          {msg.reactions && msg.reactions.length > 0 && (
+                            <div className="absolute bottom-[-10px] right-2 flex gap-1 bg-[var(--bg-card)] border border-[var(--border-color)] px-1.5 py-0.5 rounded-full text-xs shadow-md">
+                              {msg.reactions.map(r => (
+                                <span key={r.id}>{r.reaction}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {isMe && (
+                          <button 
+                            onClick={() => sendReaction(msg.id, '👍')}
+                            className="opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-card)] text-xs cursor-pointer hover:bg-[var(--border-color)]"
+                            title="React Thumbs Up"
+                          >
+                            <SmilePlus className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-[var(--text-secondary)] opacity-60">
+                        <span>{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        {isMe && (
+                          <span className="flex items-center">
+                            {tickStatus === 'sent' && <Check className="w-3.5 h-3.5 text-slate-400" />}
+                            {tickStatus === 'delivered' && <CheckCheck className="w-3.5 h-3.5 text-slate-400" />}
+                            {tickStatus === 'seen' && <CheckCheck className="w-3.5 h-3.5 text-indigo-400" />}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+                <div ref={messageEndRef} />
+              </div>
+
+              {friendIsTyping && (
+                <div className="px-8 py-2 text-xs text-[var(--text-secondary)] flex items-center gap-2 select-none animate-pulse">
+                  <div className="flex gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-secondary)] animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  <span>Partner is typing...</span>
+                </div>
+              )}
+
+              {replyingTo && (
+                <div className="px-8 py-3 bg-[var(--bg-card)] border-t border-[var(--border-color)] flex justify-between items-center text-xs">
+                  <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+                    <CornerUpLeft className="w-4 h-4" />
+                    <span>Replying to: <strong>{getMessageText(replyingTo) || 'shared item'}</strong></span>
+                  </div>
+                  <button 
+                    onClick={() => setReplyingTo(null)}
+                    className="text-rose-500 font-bold hover:underline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              {/* Message Input Controls */}
+              <div className="p-6 border-t border-[var(--border-color)] flex-shrink-0 relative">
+                {showEmojiPicker && (
+                  <div className="absolute bottom-28 left-6 z-30 shadow-2xl">
+                    <EmojiPicker onEmojiClick={onEmojiClick} theme={'dark' as any} />
+                  </div>
+                )}
+
+                {showAttachMenu && (
+                  <div className="absolute bottom-28 left-16 z-30 glass-card p-3 border border-[var(--border-color)] space-y-2 w-48 shadow-xl">
+                    <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[var(--border-color)] text-xs font-semibold cursor-pointer text-slate-200">
+                      <ImageIcon className="w-4 h-4 text-pink-500" />
+                      <span>Upload Photos</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleFileChange}
+                        multiple
+                        className="hidden" 
+                      />
+                    </label>
+                    <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[var(--border-color)] text-xs font-semibold cursor-pointer text-slate-200">
+                      <Paperclip className="w-4 h-4 text-[var(--accent)]" />
+                      <span>Upload Files/PDF</span>
+                      <input 
+                        type="file" 
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.zip" 
+                        onChange={handleFileChange}
+                        multiple
+                        className="hidden" 
+                      />
+                    </label>
+                  </div>
+                )}
+
+                {attachmentPreviews.length > 0 && (
+                  <div className="flex gap-3 mb-3 p-3 glass-card border border-[var(--border-color)] rounded-xl overflow-x-auto">
+                    {attachmentPreviews.map((prev, index) => (
+                      <div key={index} className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border border-[var(--border-color)] bg-black/20 flex items-center justify-center p-1">
+                        {prev.type === 'image' ? (
+                          <img src={prev.url} className="w-full h-full object-cover rounded-md" alt="" />
+                        ) : (
+                          <Paperclip className="w-6 h-6 text-[var(--accent)]" />
+                        )}
+                        <button 
+                          onClick={() => {
+                            setAttachmentsToSend(prevList => prevList.filter((_, i) => i !== index))
+                            setAttachmentPreviews(prevList => prevList.filter((_, i) => i !== index))
+                          }}
+                          className="absolute top-0 right-0 bg-red-500 text-white rounded-bl-lg p-0.5 text-[9px] font-bold"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {smartReplies.length > 0 && (
+                  <div className="flex gap-2 mb-3.5 flex-wrap">
+                    {smartReplies.map((reply, rIdx) => (
+                      <button
+                        key={rIdx}
+                        type="button"
+                        onClick={() => setInputText(reply)}
+                        className="px-3 py-1.5 rounded-full border border-[var(--border-color)] hover:border-[var(--accent)] hover:bg-[var(--accent-glow)] text-[10px] font-bold text-[var(--text-secondary)] hover:text-white transition-all cursor-pointer"
+                      >
+                        {reply}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {isRecording ? (
+                  <div className="flex w-full items-center justify-between p-3 glass-card border border-rose-500/20 bg-rose-500/5 rounded-xl animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+                      <span className="text-xs text-rose-400 font-bold uppercase tracking-wider">Recording Voice Note...</span>
+                      <span className="text-sm font-mono text-white font-bold">{formatDuration(recordingDuration)}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => stopRecording(false)}
+                        className="px-4 py-2 rounded-lg border border-[var(--border-color)] hover:bg-white/5 text-xs text-white cursor-pointer font-semibold"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => stopRecording(true)}
+                        className="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold cursor-pointer flex items-center gap-1 shadow-md shadow-rose-500/25"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Send Note</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSendMessage} className="flex gap-4 items-center">
+                    <div className="flex gap-2">
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setShowEmojiPicker(false)
+                          setShowAttachMenu(!showAttachMenu)
+                        }}
+                        className="p-3 rounded-xl border border-[var(--border-color)] hover:bg-[var(--border-color)] transition-all cursor-pointer text-[var(--text-secondary)] hover:text-white"
+                        title="Attach Item"
+                      >
+                        <Paperclip className="w-4.5 h-4.5" />
+                      </button>
+                      
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          setShowAttachMenu(false)
+                          setShowEmojiPicker(!showEmojiPicker)
+                        }}
+                        className="p-3 rounded-xl border border-[var(--border-color)] hover:bg-[var(--border-color)] transition-all cursor-pointer text-[var(--text-secondary)] hover:text-white"
+                        title="Emojis"
+                      >
+                        <EmojiIcon className="w-4.5 h-4.5" />
+                      </button>
+                    </div>
+
+                    <div className="relative flex-1">
+                      <input 
+                        type="text" 
+                        placeholder="Write your encrypted message..."
+                        value={inputText}
+                        onChange={handleInputChange}
+                        className="w-full py-3 pl-4 pr-12 glass-input text-xs focus:ring-[var(--accent-glow)]"
+                      />
+                      
+                      <button 
+                        type="button" 
+                        onClick={startRecording}
+                        className="absolute right-3.5 top-3.5 text-[var(--text-secondary)] hover:text-white cursor-pointer"
+                        title="Record Voice Note"
+                      >
+                        <Mic className="w-4.5 h-4.5" />
+                      </button>
+                    </div>
+
+                    <button 
+                      type="submit" 
+                      disabled={uploadingFile || (!inputText.trim() && attachmentsToSend.length === 0)}
+                      className="p-3 rounded-xl btn-premium flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {uploadingFile ? <RefreshCw className="w-4.5 h-4.5 animate-spin" /> : <Send className="w-4.5 h-4.5" />}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </section>
+
+      {/* Report Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="glass-panel p-6 max-w-md w-full border border-[var(--border-color)]">
+            <h3 className="text-lg font-heading font-bold text-white mb-2 flex items-center gap-2">
+              <Flag className="w-5 h-5 text-amber-500" />
+              <span>Report User</span>
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)] mb-4">
+              Please provide a detailed reason for reporting this user. The administration team will review this report and take appropriate actions.
+            </p>
+            <textarea
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              placeholder="E.g., Harassment, offensive language, spam..."
+              className="w-full px-3 py-2.5 glass-input text-xs h-28 resize-none mb-4"
+              required
+            />
+            <div className="flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReportModal(false)
+                  setReportReason('')
+                }}
+                className="px-4 py-2 rounded-xl border border-[var(--border-color)] hover:bg-white/5 text-xs text-white cursor-pointer font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleReportPartner}
+                disabled={!reportReason.trim()}
+                className="btn-premium px-4 py-2 text-xs cursor-pointer font-semibold disabled:opacity-50"
+              >
+                Submit Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Summary Modal */}
+      {showSummaryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="glass-panel p-6 max-w-md w-full border border-[var(--border-color)]">
+            <h3 className="text-lg font-heading font-bold text-white mb-2 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-400" />
+              <span>AI Chat Summary</span>
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)] mb-4">
+              Here is a generated summary of your recent conversations in this chat room:
+            </p>
+            <div className="bg-black/30 border border-white/5 rounded-xl p-4 text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap font-sans mb-4">
+              {chatSummary}
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSummaryModal(false)
+                  setChatSummary('')
+                }}
+                className="btn-premium px-5 py-2.5 text-xs cursor-pointer font-semibold"
+              >
+                Close Summary
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

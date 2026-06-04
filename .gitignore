@@ -1,0 +1,22 @@
+# Node.js dependencies
+node_modules/
+
+# Python environment and cache
+venv/
+.env
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Production build outputs
+dist/
+build/
+
+# IDE and system configurations
+.gemini/
+.idea/
+.vscode/
+.DS_Store
+
+# Temporary log files
+*.log
