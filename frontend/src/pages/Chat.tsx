@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   ArrowLeft, Search, Paperclip, Send, Mic, 
-  Settings as SettingsIcon, LogOut, Sparkles, Grid,
+  Settings as SettingsIcon, LogOut, Grid,
   Lock, Check, CheckCheck, SmilePlus, CornerUpLeft, RefreshCw, 
   Smile as EmojiIcon, MessageSquare, Image as ImageIcon,
   UserX, Flag, MoreVertical, Gamepad2, Heart, Calendar as CalendarIcon, 
@@ -688,12 +688,10 @@ export default function Chat() {
       <aside className="w-64 h-full glass-panel rounded-none border-y-0 border-l-0 flex flex-col justify-between p-6 z-20 flex-shrink-0">
         <div className="space-y-8">
           <div className="flex items-center gap-3 px-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[var(--accent)] to-pink-500 flex items-center justify-center shadow-lg">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
+            <img src="/src/assets/hero.png" alt="logo" className="w-9 h-9 rounded-xl" />
             <div>
               <h1 className="text-lg font-black tracking-wider text-[var(--accent)] glow-text leading-none">CONNECT-ON</h1>
-              <span className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase tracking-widest">PRO HUB</span>
+              <span className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase tracking-widest">FEEL FREE TO CONNECT</span>
             </div>
           </div>
 

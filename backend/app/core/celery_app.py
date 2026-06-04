@@ -4,8 +4,8 @@ from app.core.config import settings
 
 celery_app = Celery(
     "connect_on_tasks",
-    broker=settings.REDIS_URL or "redis://localhost:6379/0",
-    backend=settings.REDIS_URL or "redis://localhost:6379/0"
+    broker=(settings.REDIS_URL.replace("rediss://", "redis://") if settings.REDIS_URL else "redis://localhost:6379/0"),
+    backend=(settings.REDIS_URL.replace("rediss://", "redis://") if settings.REDIS_URL else "redis://localhost:6379/0")
 )
 
 # Celery Configurations & Dead Letter Queue (DLQ) Setup

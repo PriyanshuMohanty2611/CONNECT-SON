@@ -6,7 +6,7 @@ from anyio.to_thread import run_sync
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.security import decode_token
-from app.models.models import Profile
+from app.models.models import Profile, Chat
 from app.sockets import db_helpers
 from app.core.redis_client import get_redis_client
 from app.services.presence_service import set_user_presence
@@ -14,7 +14,12 @@ from app.services.presence_service import set_user_presence
 # Create Socket.IO async server
 client_manager = None
 if settings.REDIS_URL:
-    client_manager = socketio.AsyncRedisManager(settings.REDIS_URL)
+    try:
+        client_manager = socketio.AsyncRedisManager(settings.REDIS_URL)
+        print("[INFO] Redis manager initialized for Socket.IO.")
+    except Exception as e:
+        print(f"[WARNING] Failed to initialize Redis manager: {e}. Falling back to in-memory.")
+        client_manager = None
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
