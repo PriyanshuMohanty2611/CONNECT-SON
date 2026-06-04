@@ -37,8 +37,12 @@ class Settings(BaseSettings):
 
     def __init__(self, **values):
         super().__init__(**values)
-        if self.DATABASE_URL and self.DATABASE_URL.startswith("postgres://"):
-            self.DATABASE_URL = self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
+        if self.DATABASE_URL:
+            if self.DATABASE_URL.startswith("postgres://"):
+                self.DATABASE_URL = self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
+            if "-pooler" in self.DATABASE_URL:
+                print("[INFO] Neon pooler connection detected. Converting to direct connection for Alembic DDL support.")
+                self.DATABASE_URL = self.DATABASE_URL.replace("-pooler", "")
 
     class Config:
         case_sensitive = True
