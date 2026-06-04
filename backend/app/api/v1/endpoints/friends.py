@@ -226,6 +226,25 @@ def accept_friend_request(
         background_tasks=background_tasks
     )
 
+    try:
+        from app.services.email_service import send_friend_request_accepted_email
+        # recipient details (the one who sent the request)
+        recipient_user = request.sender
+        recipient_name = recipient_user.profile.full_name if recipient_user.profile and recipient_user.profile.full_name else recipient_user.username
+        
+        # friend details (current_user who is accepting)
+        friend_name = current_user.profile.full_name if current_user.profile and current_user.profile.full_name else current_user.username
+        friend_avatar = current_user.profile.avatar_url if current_user.profile else None
+
+        send_friend_request_accepted_email(
+            target_email=recipient_user.email,
+            username=recipient_name,
+            friend_name=friend_name,
+            friend_avatar_url=friend_avatar
+        )
+    except Exception as email_err:
+        print(f"[ERROR] Failed to send friend accept email: {email_err}")
+
     return {"message": "Friend request accepted"}
 
 

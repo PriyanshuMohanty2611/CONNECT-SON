@@ -112,6 +112,13 @@ def verify_email_otp(otp_in: OTPVerify, request: Request, response: Response, db
         user.is_verified = True
         db.commit()
         db.refresh(user)
+        try:
+            from app.services.email_service import send_welcome_email
+            # Use profile full name if available, fallback to username
+            name = user.profile.full_name if user.profile and user.profile.full_name else user.username
+            send_welcome_email(target_email=user.email, username=name)
+        except Exception as welcome_err:
+            print(f"[ERROR] Failed to send welcome email: {welcome_err}")
 
     import uuid
     session_id = str(uuid.uuid4())
@@ -399,3 +406,35 @@ def revoke_all_other_sessions(
     
     db.commit()
     return {"message": "All other sessions successfully revoked"}
+
+
+@router.post("/test-email/{email_type}")
+def test_premium_emails(
+    email_type: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    from app.services import email_service
+    name = current_user.profile.full_name if current_user.profile and current_user.profile.full_name else current_user.username
+    
+    if email_type == "welcome":
+        email_service.send_welcome_email(current_user.email, name)
+        return {"message": f"Welcome email sent successfully to {current_user.email}"}
+    elif email_type == "otp":
+        email_service.send_vault_otp_email(current_user.email, "845293", "registration", name)
+        return {"message": f"OTP email sent successfully to {current_user.email}"}
+    elif email_type == "monthly-story":
+        email_service.send_monthly_story_email(current_user.email, name, 92, 18, 4)
+        return {"message": f"Monthly story email sent successfully to {current_user.email}"}
+    elif email_type == "anniversary":
+        email_service.send_anniversary_email(current_user.email, name, "Priya", 1)
+        return {"message": f"Anniversary email sent successfully to {current_user.email}"}
+    elif email_type == "friend-accept":
+        email_service.send_friend_request_accepted_email(current_user.email, name, "Priya", None)
+        return {"message": f"Friend accept email sent successfully to {current_user.email}"}
+    elif email_type == "recovery":
+        email_service.send_security_vault_recovery_email(current_user.email, name, "https://connect-on.render.com/reset-password")
+        return {"message": f"Security recovery email sent successfully to {current_user.email}"}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid email type. Choose welcome, otp, monthly-story, anniversary, friend-accept, or recovery.")
+
