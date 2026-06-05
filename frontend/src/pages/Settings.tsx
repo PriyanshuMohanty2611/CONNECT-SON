@@ -4,9 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   User, Lock, Mail, Phone, Shield, Monitor, 
   Trash2, Check, ArrowLeft, RefreshCw, 
-  UserX, AlertCircle, Sparkles, LogOut, Globe
+  UserX, AlertCircle, Sparkles, LogOut, Globe, Camera
 } from 'lucide-react'
-import { useAuth } from '../context/AuthContext'
+import { useAuth, type UserProfile } from '../context/AuthContext'
 import { api } from '../services/api'
 import { initE2EE } from '../services/crypto'
 
@@ -36,6 +36,7 @@ export default function Settings() {
   
   const [activeTab, setActiveTab] = useState<TabType>('profile')
   const [loading, setLoading] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
@@ -128,6 +129,36 @@ export default function Settings() {
       showNotification('success', 'Profile updated successfully!')
     } else {
       showNotification('error', 'Failed to update profile.')
+    }
+  }
+
+  // Avatar Image Upload
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      showNotification('error', 'Only image files are allowed.')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showNotification('error', 'Image size must be less than 5MB.')
+      return
+    }
+
+    setUploadingAvatar(true)
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const { data, error } = await api.post<UserProfile>('/users/me/avatar', formData)
+    setUploadingAvatar(false)
+
+    if (error) {
+      showNotification('error', error)
+    } else {
+      showNotification('success', 'Profile picture updated successfully!')
+      refreshUser()
     }
   }
 
@@ -413,6 +444,53 @@ export default function Settings() {
                   <p className="text-sm text-[var(--text-secondary)] mb-6">Modify details visible to other members.</p>
 
                   <form onSubmit={handleUpdateProfile} className="space-y-5 max-w-xl">
+                    {/* Profile Picture Upload Section */}
+                    <div className="flex flex-col sm:flex-row items-center gap-6 p-4 glass-card border border-[var(--border-color)] bg-white/5 mb-6 rounded-xl">
+                      <div className="relative group w-24 h-24 rounded-full overflow-hidden border-2 border-[var(--accent)] shadow-lg shadow-[var(--accent-glow)] flex-shrink-0">
+                        {uploadingAvatar ? (
+                          <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
+                            <RefreshCw className="w-6 h-6 animate-spin text-[var(--accent)]" />
+                          </div>
+                        ) : (
+                          <>
+                            <img
+                              src={user?.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'}
+                              alt="Profile Avatar"
+                              className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                            />
+                            <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-xs font-semibold cursor-pointer transition-opacity duration-200">
+                              <Camera className="w-5 h-5 mb-1" />
+                              Change
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleAvatarUpload}
+                                disabled={uploadingAvatar}
+                              />
+                            </label>
+                          </>
+                        )}
+                      </div>
+                      
+                      <div className="flex-1 text-center sm:text-left">
+                        <h4 className="text-sm font-bold text-white mb-1">Profile Picture</h4>
+                        <p className="text-xs text-[var(--text-secondary)] mb-3">
+                          Upload a high-quality JPG, PNG, or WEBP image. Max size 5MB.
+                        </p>
+                        <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--border-color)] hover:bg-white/5 text-xs font-bold text-white cursor-pointer transition-all">
+                          <Camera className="w-4 h-4" />
+                          Choose Image
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleAvatarUpload}
+                            disabled={uploadingAvatar}
+                          />
+                        </label>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1.5">Full Name</label>

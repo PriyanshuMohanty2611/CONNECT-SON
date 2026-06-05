@@ -6,6 +6,7 @@ import {
   Check, AlertCircle, RefreshCw, Eye, EyeOff 
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import FallingPhysicsBackground from '../components/FallingPhysicsBackground'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -101,14 +102,18 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-transparent py-12 px-4 relative overflow-hidden">
+      {/* Physics falling particles canvas background */}
+      <FallingPhysicsBackground />
+
       {/* Blurry glow background */}
       <div className="absolute top-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-[var(--accent)] opacity-10 blur-[130px] animate-glow pointer-events-none" />
       <div className="absolute bottom-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-indigo-500 opacity-5 blur-[130px] animate-glow pointer-events-none" />
 
       <div className="max-w-md w-full z-10">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-extrabold text-[var(--accent)] glow-text tracking-wide mb-2">CONNECT-ON</h1>
-          <p className="text-[var(--text-secondary)] text-sm">WhatsApp Simplicity • Instagram Style • Discord Speed</p>
+        <div className="text-center mb-8 flex flex-col items-center">
+          <img src="/logo.png" alt="CONNECT-SON" className="h-16 w-auto object-contain drop-shadow-[0_0_15px_rgba(0,102,255,0.4)] animate-[pulse_3s_infinite]" />
+          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-pink-500 tracking-wider mt-3 mb-1">CONNECT-SON</h1>
+          <p className="text-[var(--text-secondary)] text-[10px] font-bold uppercase tracking-widest opacity-80">Feel Free To Connect</p>
         </div>
 
         <div className="glass-panel p-8 w-full">

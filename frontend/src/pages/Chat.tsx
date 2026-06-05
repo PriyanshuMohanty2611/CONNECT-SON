@@ -7,7 +7,7 @@ import {
   Lock, Check, CheckCheck, SmilePlus, CornerUpLeft, RefreshCw, 
   Smile as EmojiIcon, MessageSquare, Image as ImageIcon,
   UserX, Flag, MoreVertical, Gamepad2, Heart, Calendar as CalendarIcon, 
-  FileText, Cloud, ShieldCheck, Activity
+  FileText, Cloud, ShieldCheck, Activity, Sparkles
 } from 'lucide-react'
 import EmojiPicker from 'emoji-picker-react'
 
@@ -17,6 +17,7 @@ import { api } from '../services/api'
 import type { UserProfile } from '../context/AuthContext'
 import { NotificationsPopover } from '../components/NotificationsPopover'
 import { encryptMessage, decryptMessage } from '../services/crypto'
+import Sidebar from '../components/Sidebar'
 
 interface Attachment {
   id: string
@@ -685,131 +686,7 @@ export default function Chat() {
       <div className="absolute top-[-30%] right-[-10%] w-[50%] h-[50%] rounded-full bg-[var(--accent)] opacity-[0.08] blur-[150px] pointer-events-none" />
       
       {/* SIDEBAR NAVIGATION */}
-      <aside className="w-64 h-full glass-panel rounded-none border-y-0 border-l-0 flex flex-col justify-between p-6 z-20 flex-shrink-0">
-        <div className="space-y-8">
-          <div className="flex items-center gap-3 px-2">
-            <img src="/src/assets/hero.png" alt="logo" className="w-9 h-9 rounded-xl" />
-            <div>
-              <h1 className="text-lg font-black tracking-wider text-[var(--accent)] glow-text leading-none">CONNECT-ON</h1>
-              <span className="text-[10px] text-[var(--text-secondary)] font-semibold uppercase tracking-widest">FEEL FREE TO CONNECT</span>
-            </div>
-          </div>
-
-          <nav className="space-y-1">
-            <button
-              onClick={() => navigate('/', { state: { tab: 'discovery' } })}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
-            >
-              <Grid className="w-4 h-4" />
-              <span>User Discovery</span>
-            </button>
-
-            <button
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer bg-[var(--accent)] text-white shadow-lg"
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span>Secure Chats</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/', { state: { tab: 'stories' } })}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
-            >
-              <ImageIcon className="w-4 h-4" />
-              <span>Stories</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/', { state: { tab: 'gaming' } })}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
-            >
-              <Gamepad2 className="w-4 h-4" />
-              <span>Gaming Hub</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/', { state: { tab: 'relationship' } })}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
-            >
-              <Heart className="w-4 h-4" />
-              <span>Relationship Hub</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/', { state: { tab: 'calendar' } })}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
-            >
-              <CalendarIcon className="w-4 h-4" />
-              <span>Smart Calendar</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/', { state: { tab: 'notes' } })}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
-            >
-              <FileText className="w-4 h-4" />
-              <span>Notes Hub</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/', { state: { tab: 'productivity' } })}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
-            >
-              <Activity className="w-4 h-4" />
-              <span>Productivity Hub</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/', { state: { tab: 'cloud' } })}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
-            >
-              <Cloud className="w-4 h-4" />
-              <span>Personal Cloud</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/', { state: { tab: 'security' } })}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Security Hub</span>
-            </button>
-
-            <button
-              onClick={() => navigate('/settings')}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-white"
-            >
-              <SettingsIcon className="w-4 h-4" />
-              <span>Settings</span>
-            </button>
-          </nav>
-        </div>
-
-        <div className="pt-4 border-t border-[var(--border-color)] space-y-4">
-          <div className="flex items-center gap-3 px-1">
-            <div className="relative">
-              <img 
-                src={currentUserProfile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'} 
-                alt="Profile" 
-                className="w-10 h-10 rounded-full object-cover border border-[var(--accent)]"
-              />
-              <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[var(--bg-main)]" />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-sm font-bold truncate leading-snug">{currentUserProfile?.full_name || currentUserUsername}</h4>
-              <p className="text-xs text-[var(--text-secondary)] truncate">@{currentUserUsername}</p>
-            </div>
-          </div>
-
-          <button 
-            onClick={logout}
-            className="w-full py-2.5 rounded-xl border border-[var(--border-color)] hover:bg-rose-500/10 hover:border-rose-500/20 text-rose-500 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Sign Out</span>
-          </button>
-        </div>
-      </aside>
+      <Sidebar activeTab="chats" />
 
       {/* ACTIVE CHATS COLUMN (Left Side) */}
       <section className="w-80 h-full border-r border-[var(--border-color)] flex flex-col z-10 flex-shrink-0 glass-panel rounded-none border-y-0 bg-opacity-10">

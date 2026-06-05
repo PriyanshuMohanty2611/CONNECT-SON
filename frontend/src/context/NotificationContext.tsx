@@ -6,7 +6,7 @@ import { useAuth } from './AuthContext'
 export interface Notification {
   id: string
   user_id: string
-  type: 'friend_request' | 'friend_accept' | 'new_message' | 'reaction' | 'profile_visit'
+  type: 'friend_request' | 'friend_accept' | 'new_message' | 'reaction' | 'profile_visit' | 'security_alert' | 'relation_match' | 'system_alert'
   sender_id?: string | null
   target_id?: string | null
   is_read: boolean

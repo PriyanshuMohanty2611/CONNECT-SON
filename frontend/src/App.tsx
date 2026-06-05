@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
@@ -8,6 +8,8 @@ import Admin from './pages/Admin'
 import Chat from './pages/Chat'
 
 function CinematicBackground() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       document.documentElement.style.setProperty('--mouse-x', `${e.clientX}px`);
@@ -17,19 +19,212 @@ function CinematicBackground() {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+
+    // Track mouse globally relative to window
+    const mouse = { x: 0, y: 0, active: false };
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      mouse.active = true;
+    };
+
+    const handleWindowMouseLeave = () => {
+      mouse.active = false;
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    document.addEventListener('mouseleave', handleWindowMouseLeave);
+
+    // Setup canvas dimension with DPR support for high resolution rendering
+    const resizeCanvas = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.scale(dpr, dpr);
+      initParticles();
+    };
+
+    interface Particle {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      radius: number;
+      alpha: number;
+    }
+
+    let particles: Particle[] = [];
+    const connectionDistance = 120;
+    const mouseConnectionDistance = 180;
+
+    const initParticles = () => {
+      particles = [];
+      // Dynamic count based on screen area to keep it elegant, minimal, and performant
+      const particleCount = Math.min(70, Math.floor((window.innerWidth * window.innerHeight) / 25000));
+      for (let i = 0; i < particleCount; i++) {
+        particles.push({
+          x: Math.random() * window.innerWidth,
+          y: Math.random() * window.innerHeight,
+          // Extremely slow speed for smooth, futuristic constellation float (never hectic!)
+          vx: (Math.random() - 0.5) * 0.12,
+          vy: (Math.random() - 0.5) * 0.12,
+          radius: Math.random() * 2.0 + 1.5,
+          alpha: Math.random() * 0.15 + 0.05, // Visible but elegant default opacity (5% - 20%)
+        });
+      }
+    };
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    const animate = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      // Precalculate distances to mouse for physics and hover effects
+      const particlesWithMouseDist = particles.map(p => {
+        if (mouse.active) {
+          const dx = p.x - mouse.x;
+          const dy = p.y - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          return { p, dist, dx, dy };
+        }
+        return { p, dist: Infinity, dx: 0, dy: 0 };
+      });
+
+      // Update and Draw Particles
+      particlesWithMouseDist.forEach(({ p, dist, dx, dy }) => {
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // Bounce gently at boundary
+        if (p.x < 0 || p.x > width) p.vx *= -1;
+        if (p.y < 0 || p.y > height) p.vy *= -1;
+
+        p.x = Math.max(0, Math.min(width, p.x));
+        p.y = Math.max(0, Math.min(height, p.y));
+
+        let finalAlpha = p.alpha;
+        let finalRadius = p.radius;
+
+        // Apply mouse interaction if close
+        if (mouse.active && dist < mouseConnectionDistance) {
+          const factor = 1 - dist / mouseConnectionDistance;
+          finalAlpha = Math.min(0.85, p.alpha + factor * 0.7); // Brighten up to 85%
+          finalRadius = p.radius + factor * 1.5; // Grow slightly to look like a glowing dot
+          
+          // Softer magnetic pull physics
+          const force = factor * 0.15;
+          p.x -= (dx / dist) * force;
+          p.y -= (dy / dist) * force;
+        }
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, finalRadius, 0, Math.PI * 2);
+
+        // Add soft glow effect to active particles near mouse
+        if (mouse.active && dist < mouseConnectionDistance) {
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = 'rgba(0, 102, 255, 0.8)';
+        } else {
+          ctx.shadowBlur = 0;
+        }
+
+        ctx.fillStyle = `rgba(0, 102, 255, ${finalAlpha})`;
+        ctx.fill();
+      });
+      ctx.shadowBlur = 0; // Reset shadow for lines
+
+      // Connections between particles
+      for (let i = 0; i < particles.length; i++) {
+        const p1 = particles[i];
+        const dist1 = mouse.active ? particlesWithMouseDist[i].dist : Infinity;
+
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dist2 = mouse.active ? particlesWithMouseDist[j].dist : Infinity;
+          const dx = p1.x - p2.x;
+          const dy = p1.y - p2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < connectionDistance) {
+            let lineAlpha = (1 - dist / connectionDistance) * 0.08;
+            let strokeColor = `rgba(0, 102, 255, ${lineAlpha})`;
+            let strokeWidth = 0.8;
+
+            // If both particles are hovering near the mouse, draw a bright, glowing neural path!
+            if (mouse.active && dist1 < mouseConnectionDistance && dist2 < mouseConnectionDistance) {
+              const factor1 = 1 - dist1 / mouseConnectionDistance;
+              const factor2 = 1 - dist2 / mouseConnectionDistance;
+              const avgFactor = (factor1 + factor2) / 2;
+              lineAlpha = 0.08 + avgFactor * 0.45; // Up to 50%+ opacity
+              strokeColor = `rgba(0, 150, 255, ${lineAlpha})`;
+              strokeWidth = 1.2;
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = strokeWidth;
+            ctx.stroke();
+          }
+        }
+
+        // Connections to mouse
+        if (mouse.active) {
+          const { dist } = particlesWithMouseDist[i];
+
+          if (dist < mouseConnectionDistance) {
+            const factor = 1 - dist / mouseConnectionDistance;
+            const lineAlpha = factor * 0.35; // Fades out with distance
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(mouse.x, mouse.y);
+            ctx.strokeStyle = `rgba(0, 130, 255, ${lineAlpha})`;
+            ctx.lineWidth = 1.0;
+            ctx.stroke();
+          }
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      document.removeEventListener('mouseleave', handleWindowMouseLeave);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, []);
+
   return (
-    <div className="fixed inset-0 pointer-events-none z-[-20] overflow-hidden">
+    <div className="fixed inset-0 pointer-events-none z-[-20] overflow-hidden bg-[#050508]">
       <div className="cinematic-bg" />
       <div className="cinematic-glow-1" />
       <div className="cinematic-glow-2" />
       <div className="mouse-glow" />
-      
-      {/* Floating particles */}
-      <div className="particle" style={{ left: '8%', animationDelay: '0s', animationDuration: '22s' }} />
-      <div className="particle" style={{ left: '25%', animationDelay: '3s', animationDuration: '18s' }} />
-      <div className="particle" style={{ left: '45%', animationDelay: '1s', animationDuration: '25s' }} />
-      <div className="particle" style={{ left: '70%', animationDelay: '5s', animationDuration: '16s' }} />
-      <div className="particle" style={{ left: '90%', animationDelay: '2s', animationDuration: '20s' }} />
+      <canvas
+        ref={canvasRef}
+        className="fixed inset-0 pointer-events-none z-[-19]"
+      />
     </div>
   );
 }

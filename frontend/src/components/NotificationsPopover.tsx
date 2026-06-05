@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Bell, Check, X, MessageSquare, UserPlus, UserCheck, Heart, Trash2, Clock } from 'lucide-react'
+import { Bell, Check, X, MessageSquare, UserPlus, UserCheck, Heart, Trash2, Clock, ShieldAlert } from 'lucide-react'
 import { useNotifications } from '../context/NotificationContext'
 import type { Notification } from '../context/NotificationContext'
 import { api } from '../services/api'
@@ -9,7 +9,23 @@ export const NotificationsPopover: React.FC = () => {
   const navigate = useNavigate()
   const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, fetchNotifications } = useNotifications()
   const [isOpen, setIsOpen] = useState(false)
+  const [activeCategory, setActiveCategory] = useState<'all' | 'security' | 'social' | 'system'>('all')
   const popoverRef = useRef<HTMLDivElement>(null)
+
+  // Demo mode state
+  const [demoMode, setDemoMode] = useState(false)
+  useEffect(() => {
+    const checkDemo = () => {
+      setDemoMode(localStorage.getItem('connecton_demo_mode') === 'true')
+    }
+    checkDemo()
+    window.addEventListener('storage', checkDemo)
+    const interval = setInterval(checkDemo, 1000)
+    return () => {
+      window.removeEventListener('storage', checkDemo)
+      clearInterval(interval)
+    }
+  }, [])
 
   // Format date helper
   const formatTime = (dateStr: string) => {
@@ -45,6 +61,7 @@ export const NotificationsPopover: React.FC = () => {
   }, [isOpen])
 
   const handleNotificationClick = async (notif: Notification) => {
+    if (notif.id.startsWith('demo-')) return // Ignore click actions for demo items
     if (!notif.is_read) {
       await markAsRead(notif.id)
     }
@@ -57,25 +74,106 @@ export const NotificationsPopover: React.FC = () => {
   }
 
   const handleFriendAction = async (e: React.MouseEvent, notif: Notification, action: 'accept' | 'reject') => {
-    e.stopPropagation() // Prevent triggering parent notification click
+    e.stopPropagation()
+    if (notif.id.startsWith('demo-')) return
     if (!notif.target_id) return
 
     const endpoint = `/friends/${action}/${notif.target_id}`
     const { error } = await api.post(endpoint)
     
     if (!error) {
-      // Mark as read and delete this friend request notification
       await markAsRead(notif.id)
       await deleteNotification(notif.id)
-      // Trigger reload of notifications and potentially current page states
       fetchNotifications()
     }
   }
+
+  // Generate high-fidelity demo notifications when demoMode is active
+  const demoNotifications: any[] = demoMode ? [
+    {
+      id: 'demo-sec-1',
+      type: 'security_alert',
+      sender_id: 'system',
+      receiver_id: 'me',
+      is_read: false,
+      created_at: new Date(Date.now() - 3 * 60000).toISOString(),
+      sender: {
+        id: 'system',
+        username: 'security_bot',
+        profile: {
+          full_name: 'Shield Gate',
+          avatar_url: 'https://images.unsplash.com/photo-1614064641938-3bbee52942c7?q=80&w=100'
+        }
+      }
+    },
+    {
+      id: 'demo-match-1',
+      type: 'relation_match',
+      sender_id: 'amit',
+      receiver_id: 'me',
+      is_read: false,
+      created_at: new Date(Date.now() - 14 * 60000).toISOString(),
+      sender: {
+        id: 'amit',
+        username: 'amit_kumar',
+        profile: {
+          full_name: 'Amit Kumar',
+          avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=100'
+        }
+      }
+    },
+    {
+      id: 'demo-sys-1',
+      type: 'system_alert',
+      sender_id: 'system',
+      receiver_id: 'me',
+      is_read: true,
+      created_at: new Date(Date.now() - 45 * 60000).toISOString(),
+      sender: {
+        id: 'system',
+        username: 'system_core',
+        profile: {
+          full_name: 'Core System',
+          avatar_url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=100'
+        }
+      }
+    }
+  ] : []
 
   const getNotifDetails = (notif: Notification) => {
     const name = notif.sender?.profile?.full_name || notif.sender?.username || 'Someone'
     
     switch (notif.type) {
+      case 'security_alert':
+        return {
+          icon: <ShieldAlert className="w-4 h-4 text-amber-500" />,
+          text: (
+            <span>
+              <strong className="text-white">New login approved</strong> from Singapore (IP: 182.56.24.12)
+            </span>
+          ),
+          hasActions: false
+        }
+      case 'relation_match':
+        return {
+          icon: <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />,
+          text: (
+            <span>
+              New relationship synergy match with <strong className="text-white">{name}</strong> (92%).
+            </span>
+          ),
+          hasActions: false
+        }
+      case 'system_alert':
+        return {
+          icon: <Clock className="w-4 h-4 text-blue-400" />,
+          text: (
+            <span>
+              Upcoming event: <strong className="text-white">Startup Launch Party</strong> in 30 mins.
+            </span>
+          ),
+          hasActions: false
+        }
       case 'friend_request':
         return {
           icon: <UserPlus className="w-4 h-4 text-indigo-400" />,
@@ -125,6 +223,21 @@ export const NotificationsPopover: React.FC = () => {
     }
   }
 
+  const getCategory = (type: string) => {
+    if (type === 'security_alert') return 'security'
+    if (type === 'system_alert') return 'system'
+    return 'social'
+  }
+
+  const combinedNotifications = [...demoNotifications, ...notifications]
+  
+  const filteredNotifications = combinedNotifications.filter(n => {
+    if (activeCategory === 'all') return true
+    return getCategory(n.type) === activeCategory
+  })
+
+  const displayUnreadCount = unreadCount + demoNotifications.filter(n => !n.is_read).length
+
   return (
     <div className="relative" ref={popoverRef}>
       <button
@@ -134,15 +247,15 @@ export const NotificationsPopover: React.FC = () => {
         }`}
       >
         <Bell className="w-4 h-4" />
-        {unreadCount > 0 && (
+        {displayUnreadCount > 0 && (
           <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-rose-500 rounded-full flex items-center justify-center text-[9px] font-black text-white shadow-md shadow-rose-500/20 scale-110">
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {displayUnreadCount > 9 ? '9+' : displayUnreadCount}
           </span>
         )}
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-80 max-h-[460px] glass-panel border border-[var(--border-color)] flex flex-col z-50 overflow-hidden shadow-2xl scale-100 origin-top-right transition-all">
+        <div className="absolute right-0 mt-3 w-80 max-h-[500px] glass-panel border border-[var(--border-color)] flex flex-col z-50 overflow-hidden shadow-2xl scale-100 origin-top-right transition-all">
           {/* Header */}
           <div className="p-4 border-b border-[var(--border-color)] flex items-center justify-between bg-black/20">
             <h3 className="text-sm font-bold text-white">Notifications</h3>
@@ -156,16 +269,33 @@ export const NotificationsPopover: React.FC = () => {
             )}
           </div>
 
+          {/* Category Tabs */}
+          <div className="flex border-b border-[var(--border-color)] bg-black/10 px-2 py-1.5 gap-1 shrink-0">
+            {(['all', 'security', 'social', 'system'] as const).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={`flex-1 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                  activeCategory === cat
+                    ? 'bg-blue-600/20 border border-blue-500/35 text-white'
+                    : 'text-[var(--text-secondary)] hover:text-white border border-transparent'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
           {/* List */}
-          <div className="flex-1 overflow-y-auto divide-y divide-[var(--border-color)] max-h-[320px] scrollbar-thin">
-            {notifications.length === 0 ? (
+          <div className="flex-1 overflow-y-auto divide-y divide-[var(--border-color)] max-h-[300px] scrollbar-thin">
+            {filteredNotifications.length === 0 ? (
               <div className="p-8 text-center text-[var(--text-secondary)]">
                 <Bell className="w-8 h-8 mx-auto mb-2 opacity-30 text-[var(--text-secondary)]" />
-                <p className="text-xs font-semibold">No notifications yet</p>
-                <p className="text-[10px] opacity-75 mt-0.5">We'll alert you when something happens!</p>
+                <p className="text-xs font-semibold">No notifications found</p>
+                <p className="text-[10px] opacity-75 mt-0.5">Filter category is currently empty!</p>
               </div>
             ) : (
-              notifications.map((notif) => {
+              filteredNotifications.map((notif) => {
                 const details = getNotifDetails(notif)
                 return (
                   <div
@@ -219,16 +349,18 @@ export const NotificationsPopover: React.FC = () => {
                     </div>
 
                     {/* Delete button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteNotification(notif.id)
-                      }}
-                      className="p-1 rounded-md text-[var(--text-secondary)] hover:text-rose-500 hover:bg-rose-500/10 transition-all self-start cursor-pointer opacity-0 group-hover:opacity-100 md:opacity-100"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                    {!notif.id.startsWith('demo-') && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteNotification(notif.id)
+                        }}
+                        className="p-1 rounded-md text-[var(--text-secondary)] hover:text-rose-500 hover:bg-rose-500/10 transition-all self-start cursor-pointer opacity-0 group-hover:opacity-100 md:opacity-100"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 )
               })

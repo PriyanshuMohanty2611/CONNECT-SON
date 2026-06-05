@@ -6,6 +6,7 @@ import {
   ArrowRight, ChevronLeft, Check, AlertCircle, RefreshCw 
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import FallingPhysicsBackground from '../components/FallingPhysicsBackground'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -141,6 +142,9 @@ export default function Register() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-transparent py-12 px-4 relative overflow-hidden">
+      {/* Physics falling particles canvas background */}
+      <FallingPhysicsBackground />
+
       {/* Decorative blurry auroras */}
       <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-[var(--accent)] opacity-10 blur-[130px] animate-glow pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-pink-500 opacity-5 blur-[130px] animate-glow pointer-events-none" />
@@ -148,7 +152,10 @@ export default function Register() {
       <div className="max-w-md w-full z-10">
         {/* Step Indicator Header */}
         <div className="flex justify-between items-center mb-8 px-2">
-          <h1 className="text-2xl font-extrabold text-[var(--accent)] glow-text tracking-wide">CONNECT-ON</h1>
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="CONNECT-SON" className="h-8 w-auto object-contain drop-shadow-[0_0_10px_rgba(0,102,255,0.3)]" />
+            <span className="text-sm font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-pink-500">CONNECT-SON</span>
+          </div>
           <div className="flex gap-2">
             {[1, 2, 3].map((s) => (
               <div 
