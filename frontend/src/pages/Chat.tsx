@@ -7,7 +7,8 @@ import {
   Lock, Check, CheckCheck, SmilePlus, CornerUpLeft, RefreshCw, 
   Smile as EmojiIcon, MessageSquare, Image as ImageIcon,
   UserX, Flag, MoreVertical, Gamepad2, Heart, Calendar as CalendarIcon, 
-  FileText, Cloud, ShieldCheck, Activity, Sparkles
+  FileText, Cloud, ShieldCheck, Activity, Sparkles, Folder, ChevronLeft, ChevronRight, X, Briefcase, Plus, UserPlus,
+  Pin, Mail, Phone, ExternalLink
 } from 'lucide-react'
 import EmojiPicker from 'emoji-picker-react'
 
@@ -87,6 +88,62 @@ export default function Chat() {
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [chatSearch, setChatSearch] = useState('')
+
+  const [showRightPanel, setShowRightPanel] = useState(true)
+  const [communicationMode, setCommunicationMode] = useState<'chat' | 'email'>('chat')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [pinnedChatIds, setPinnedChatIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('connect_on_pinned_chats') || '[]')
+    } catch {
+      return []
+    }
+  })
+
+  // Helper to check if a chat is pinned
+  const isPinned = (chatId: string) => pinnedChatIds.includes(chatId)
+
+  // Toggle Pinned
+  const togglePinChat = (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setPinnedChatIds(prev => {
+      const updated = prev.includes(chatId) 
+        ? prev.filter(id => id !== chatId) 
+        : [...prev, chatId]
+      localStorage.setItem('connect_on_pinned_chats', JSON.stringify(updated))
+      return updated
+    })
+  }
+
+  // Parse partner workspace details
+  const getPartnerWorkspaceInfo = (partner: UserProfile | undefined) => {
+    if (!partner?.profile?.bio) return { role: 'Candidate', company: '', linkedin: '', alternatePhone: '', tags: [] }
+    const bioText = partner.profile.bio.trim()
+    if (bioText.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(bioText)
+        return {
+          role: parsed.jobTitle || 'Candidate',
+          company: parsed.company || '',
+          linkedin: parsed.linkedin || '',
+          alternatePhone: parsed.alternatePhone || '',
+          tags: parsed.tags || []
+        }
+      } catch (e) {
+        // ignore JSON errors, fallback
+      }
+    }
+    return { role: partner.profile.bio.slice(0, 30) || 'Candidate', company: '', linkedin: '', alternatePhone: '', tags: [] }
+  }
+
+  // Helper to format bytes
+  const formatFileSize = (bytes: number) => {
+    if (!bytes || bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+  }
 
   // Loading/pagination states
   const [loadingChats, setLoadingChats] = useState(true)
@@ -484,16 +541,22 @@ export default function Chat() {
     const text = inputText.trim()
     if ((!text && attachmentsToSend.length === 0) || !selectedChat) return
 
-    let encryptedContent = text || null
+    let finalContent = text
+    if (communicationMode === 'email') {
+      const emailSubjectLine = emailSubject.trim() || 'No Subject'
+      finalContent = `[Email] Subject: ${emailSubjectLine}\n\n${text}`
+    }
+
+    let encryptedContent = finalContent || null
     let nonce: string | null = null
     let isEncrypted = false
 
-    if (text && selectedChat.type === 'direct') {
+    if (finalContent && selectedChat.type === 'direct') {
       const partner = getChatPartner(selectedChat)
       const partnerPubKey = partner?.profile?.public_key
       if (partnerPubKey) {
         try {
-          const enc = await encryptMessage(text, partnerPubKey, currentUserUsername || '')
+          const enc = await encryptMessage(finalContent, partnerPubKey, currentUserUsername || '')
           encryptedContent = enc.ciphertext
           nonce = enc.nonce
           isEncrypted = true
@@ -521,6 +584,7 @@ export default function Chat() {
     }
 
     setInputText('')
+    setEmailSubject('')
     setReplyingTo(null)
     setAttachmentsToSend([])
     setAttachmentPreviews([])
@@ -732,6 +796,97 @@ export default function Chat() {
     return name.toLowerCase().includes(chatSearch.toLowerCase())
   })
 
+  const pinnedChats = filteredChats.filter(c => pinnedChatIds.includes(c.id))
+  const candidateChats = filteredChats.filter(c => !pinnedChatIds.includes(c.id))
+
+  const renderChatItem = (c: Chat) => {
+    const partner = getChatPartner(c)
+    const status = partner ? (onlineStatuses[partner.id] || partner.profile?.presence_status || 'offline') : 'offline'
+    const active = selectedChat?.id === c.id
+    const ws = getPartnerWorkspaceInfo(partner)
+    const isChatPinned = isPinned(c.id)
+
+    // Status colors
+    const charSum = (partner?.username || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    const statuses = ["Replied", "Active", "Shortlisted", "Applied", "Under Review"]
+    const statusColors = [
+      "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+      "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+      "bg-purple-500/10 text-purple-400 border-purple-500/20",
+      "bg-amber-500/10 text-amber-400 border-amber-500/20",
+      "bg-rose-500/10 text-rose-400 border-rose-500/20"
+    ]
+    const itemStatus = statuses[charSum % statuses.length]
+    const statusColor = statusColors[charSum % statusColors.length]
+
+    return (
+      <div
+        key={c.id}
+        onClick={() => selectChatRoom(c)}
+        className={`w-full flex items-start gap-3 p-3.5 rounded-xl transition-all cursor-pointer text-left border mb-2 group/item relative ${
+          active 
+            ? 'bg-gradient-to-br from-[var(--accent)] to-[#4f2ee3] text-white border-transparent shadow-lg shadow-[var(--accent-glow)] scale-[1.01]' 
+            : 'border-[var(--border-color)] bg-[var(--bg-card)] hover:bg-white/5 text-[var(--text-secondary)] hover:text-white hover:translate-x-0.5'
+        }`}
+      >
+        <div className="relative flex-shrink-0 mt-0.5">
+          <img 
+            src={partner?.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'} 
+            alt="" 
+            className="w-10 h-10 rounded-full object-cover border border-white/10"
+          />
+          <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[var(--bg-main)] ${
+            status === 'online' ? 'bg-emerald-500' : status === 'away' ? 'bg-amber-500' : status === 'busy' ? 'bg-red-500' : 'bg-slate-500'
+          }`} />
+        </div>
+        
+        <div className="flex-1 min-w-0 flex flex-col gap-1">
+          <div className="flex justify-between items-baseline w-full">
+            <h4 className="text-xs font-black truncate text-white group-hover/item:text-[var(--accent)] transition-colors font-heading">
+              {partner?.profile?.full_name || partner?.username}
+            </h4>
+            {c.last_message && (
+              <span className="text-[9px] opacity-60 flex-shrink-0 ml-1 font-semibold">
+                {new Date(c.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={`text-[9px] font-bold opacity-80 ${active ? 'text-white/80' : 'text-[var(--text-secondary)]'}`}>
+              {ws.role}
+            </span>
+            <span className="text-[8px] opacity-30">•</span>
+            <span className={`text-[8px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider border ${active ? 'bg-white/20 text-white border-white/20' : statusColor}`}>
+              {itemStatus}
+            </span>
+          </div>
+          
+          <div className="flex items-center justify-between mt-1">
+            <p className={`text-[10px] truncate max-w-[140px] ${active ? 'text-white/95' : 'text-[var(--text-secondary)]/90'}`}>
+              {getMessageText(c.last_message) || (c.last_message?.attachments?.length ? 'Shared a file' : 'Start chatting...')}
+            </p>
+            <div className="flex items-center gap-1.5">
+              {c.unread_count > 0 && (
+                <span className="h-4 min-w-4 px-1 rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center">
+                  {c.unread_count}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={(e) => togglePinChat(c.id, e)}
+                className="opacity-0 group-hover/item:opacity-100 p-0.5 rounded hover:bg-white/10 transition-all text-slate-400 hover:text-white cursor-pointer"
+                title={isChatPinned ? "Unpin conversation" : "Pin conversation"}
+              >
+                <Pin className={`w-3 h-3 ${isChatPinned ? 'fill-current text-amber-400' : ''}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (!user) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-transparent">
@@ -748,14 +903,14 @@ export default function Chat() {
       {/* Background decoration */}
       <div className="absolute top-[-30%] right-[-10%] w-[50%] h-[50%] rounded-full bg-[var(--accent)] opacity-[0.08] blur-[150px] pointer-events-none" />
       
-      {/* SIDEBAR NAVIGATION */}
+      {/* COLUMN 1: SIDEBAR NAVIGATION */}
       <Sidebar activeTab="chats" />
 
-      {/* ACTIVE CHATS COLUMN (Left Side) */}
+      {/* COLUMN 2: ACTIVE CHATS COLUMN (Left Side) */}
       <section className="w-80 h-full border-r border-[var(--border-color)] flex flex-col z-10 flex-shrink-0 glass-panel rounded-none border-y-0 bg-opacity-10">
         <div className="p-6 border-b border-[var(--border-color)] space-y-4 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-extrabold tracking-tight text-white">Chats</h2>
+            <h2 className="text-xl font-extrabold tracking-tight text-white font-heading">Recruitment Inbox</h2>
             <NotificationsPopover />
           </div>
           
@@ -763,7 +918,7 @@ export default function Chat() {
             <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
             <input 
               type="text" 
-              placeholder="Search chat partner..."
+              placeholder="Search candidate or role..."
               value={chatSearch}
               onChange={(e) => setChatSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 glass-input text-xs"
@@ -771,101 +926,40 @@ export default function Chat() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+        <div className="flex-1 overflow-y-auto p-3 space-y-4">
           {loadingChats ? (
             <div className="py-20 text-center">
               <RefreshCw className="w-6 h-6 animate-spin text-[var(--accent)] mx-auto" />
             </div>
           ) : filteredChats.length === 0 ? (
             <div className="text-center py-20 text-[var(--text-secondary)] text-xs">
-              No conversations found.
+              No candidates found.
             </div>
           ) : (
-            filteredChats.map((c) => {
-              const partner = getChatPartner(c)
-              const status = partner ? (onlineStatuses[partner.id] || partner.profile?.presence_status || 'offline') : 'offline'
-              const active = selectedChat?.id === c.id
+            <>
+              {/* Pinned Candidates */}
+              {pinnedChats.length > 0 && (
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-widest px-2.5 block mb-1">
+                    Pinned Candidates ({pinnedChats.length})
+                  </span>
+                  {pinnedChats.map(renderChatItem)}
+                </div>
+              )}
 
-              // Determine a mock role & status based on username length / char code for variety
-              const charSum = (partner?.username || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-              
-              const roles = ["Lead Designer", "Fullstack Developer", "Talent Acquisition", "HR Specialist", "Product Manager"]
-              const statuses = ["Replied", "Active", "Shortlisted", "Applied", "Under Review"]
-              const statusColors = [
-                "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-                "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
-                "bg-purple-500/10 text-purple-400 border-purple-500/20",
-                "bg-amber-500/10 text-amber-400 border-amber-500/20",
-                "bg-rose-500/10 text-rose-400 border-rose-500/20"
-              ]
-
-              const role = roles[charSum % roles.length]
-              const itemStatus = statuses[charSum % statuses.length]
-              const statusColor = statusColors[charSum % statusColors.length]
-
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => selectChatRoom(c)}
-                  className={`w-full flex items-start gap-3 p-3.5 rounded-xl transition-all cursor-pointer text-left border mb-2 ${
-                    active 
-                      ? 'bg-gradient-to-br from-[var(--accent)] to-[#4f2ee3] text-white border-transparent shadow-lg shadow-[var(--accent-glow)] scale-[1.01]' 
-                      : 'border-[var(--border-color)] bg-[var(--bg-card)] hover:bg-white/5 text-[var(--text-secondary)] hover:text-white hover:translate-x-0.5'
-                  }`}
-                >
-                  <div className="relative flex-shrink-0 mt-0.5">
-                    <img 
-                      src={partner?.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'} 
-                      alt="" 
-                      className="w-10 h-10 rounded-full object-cover border border-white/10"
-                    />
-                    <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[var(--bg-main)] ${
-                      status === 'online' ? 'bg-emerald-500' : status === 'away' ? 'bg-amber-500' : status === 'busy' ? 'bg-red-500' : 'bg-slate-500'
-                    }`} />
-                  </div>
-                  
-                  <div className="flex-1 min-w-0 flex flex-col gap-1">
-                    <div className="flex justify-between items-baseline w-full">
-                      <h4 className="text-xs font-black truncate text-white">
-                        {partner?.profile?.full_name || partner?.username}
-                      </h4>
-                      {c.last_message && (
-                        <span className="text-[9px] opacity-60 flex-shrink-0 ml-1 font-semibold">
-                          {new Date(c.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`text-[9px] font-bold opacity-80 ${active ? 'text-white/80' : 'text-[var(--text-secondary)]'}`}>
-                        {role}
-                      </span>
-                      <span className="text-[8px] opacity-30">•</span>
-                      <span className={`text-[8px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider border ${active ? 'bg-white/20 text-white border-white/20' : statusColor}`}>
-                        {itemStatus}
-                      </span>
-                    </div>
-                    
-                    <div className="flex items-center justify-between mt-1">
-                      <p className={`text-[10px] truncate max-w-[140px] ${active ? 'text-white/95' : 'text-[var(--text-secondary)]/90'}`}>
-                        {getMessageText(c.last_message) || (c.last_message?.attachments?.length ? 'Shared a file' : 'Start chatting...')}
-                      </p>
-                      {c.unread_count > 0 && (
-                        <span className="h-4 min-w-4 px-1 rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center">
-                          {c.unread_count}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              )
-            })
+              {/* All Candidate Inbox */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-widest px-2.5 block mb-1">
+                  Candidate Inbox ({candidateChats.length})
+                </span>
+                {candidateChats.map(renderChatItem)}
+              </div>
+            </>
           )}
-
         </div>
       </section>
 
-      {/* SECURE MESSAGING CHAT WINDOW */}
+      {/* COLUMN 3: SECURE MESSAGING CHAT WINDOW */}
       <section className="flex-1 h-full flex flex-col z-10 overflow-hidden bg-transparent">
         <AnimatePresence mode="wait">
           {!selectedChat ? (
@@ -880,9 +974,9 @@ export default function Chat() {
                 <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-[var(--accent)] to-pink-500 flex items-center justify-center mx-auto shadow-2xl shadow-[var(--accent-glow)]">
                   <Lock className="w-10 h-10 text-white" />
                 </div>
-                <h3 className="text-2xl font-black tracking-tight glow-text">End-to-End Encrypted Messaging</h3>
+                <h3 className="text-2xl font-black tracking-tight glow-text font-heading">Secure Talent Communications</h3>
                 <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                  Select a friend from the conversations sidebar to begin exchanging secure messages. Your key exchange handshake will be completed automatically.
+                  Select a candidate from the recruitment inbox to begin exchanging end-to-end encrypted messages or dispatch official onboarding emails.
                 </p>
               </div>
             </motion.div>
@@ -894,9 +988,10 @@ export default function Chat() {
               exit={{ opacity: 0 }}
               className="flex-1 flex flex-col h-full overflow-hidden"
             >
-              {/* Chat Header */}
+              {/* Redesigned Header with toggles */}
               {(() => {
                 const partner = getChatPartner(selectedChat)
+                const ws = getPartnerWorkspaceInfo(partner)
                 const status = partner ? (onlineStatuses[partner.id] || partner.profile?.presence_status || 'offline') : 'offline'
                 return (
                   <header className="h-16 border-b border-[var(--border-color)] px-8 flex items-center justify-between flex-shrink-0 glass-panel rounded-none border-t-0 border-x-0 bg-opacity-30">
@@ -919,19 +1014,49 @@ export default function Chat() {
                       </div>
                       <div>
                         <h4 className="text-sm font-bold leading-tight">{partner?.profile?.full_name || partner?.username}</h4>
-                        <span className="text-[10px] text-[var(--text-secondary)] font-semibold capitalize tracking-wide">{status}</span>
+                        <span className="text-[10px] text-[var(--accent)] font-bold tracking-wide block">{ws.role}</span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1 bg-[var(--accent-glow)] border border-[var(--accent)]/20 px-3 py-1.5 rounded-full text-[10px] text-[var(--accent)] font-bold">
+                    {/* Mode Toggle Switch (Chat vs Email) */}
+                    <div className="flex bg-[var(--border-color)] p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => setCommunicationMode('chat')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          communicationMode === 'chat'
+                            ? 'bg-[var(--accent)] text-white shadow-sm'
+                            : 'text-[var(--text-secondary)] hover:text-white'
+                        }`}
+                      >
                         <Lock className="w-3.5 h-3.5" />
-                        <span className="uppercase tracking-widest">E2EE Secured</span>
-                      </div>
+                        <span>Chat</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCommunicationMode('email')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          communicationMode === 'email'
+                            ? 'bg-[var(--accent)] text-white shadow-sm'
+                            : 'text-[var(--text-secondary)] hover:text-white'
+                        }`}
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>Email</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {communicationMode === 'chat' && (
+                        <div className="flex items-center gap-1 bg-[var(--accent-glow)] border border-[var(--accent)]/20 px-3 py-1.5 rounded-full text-[10px] text-[var(--accent)] font-bold">
+                          <Lock className="w-3.5 h-3.5" />
+                          <span className="uppercase tracking-widest">E2EE Secured</span>
+                        </div>
+                      )}
 
                       {chatMood && (
                         <div 
-                          className="flex items-center gap-1 bg-pink-500/10 border border-pink-500/20 px-3 py-1.5 rounded-full text-[10px] text-pink-400 font-bold"
+                          className="hidden sm:flex items-center gap-1 bg-pink-500/10 border border-pink-500/20 px-3 py-1.5 rounded-full text-[10px] text-pink-400 font-bold"
                           title={chatMood.description}
                         >
                           <span>🎭 Mood: {chatMood.mood}</span>
@@ -979,6 +1104,18 @@ export default function Chat() {
                           </div>
                         )}
                       </div>
+
+                      {/* Right Panel Toggle Arrow */}
+                      <button
+                        onClick={() => setShowRightPanel(!showRightPanel)}
+                        className={`p-1.5 rounded-lg border border-[var(--border-color)] hover:bg-white/5 transition-all cursor-pointer ${
+                          showRightPanel ? 'text-[var(--accent)] border-[var(--accent)]/30 bg-[var(--accent-glow)]' : 'text-[var(--text-secondary)]'
+                        }`}
+                        title="Toggle Profile Panel"
+                      >
+                        <ChevronRight className={`w-4 h-4 transition-transform duration-300 ${showRightPanel ? 'rotate-180' : ''}`} />
+                      </button>
+
                     </div>
                   </header>
                 )
@@ -1000,6 +1137,51 @@ export default function Chat() {
                   const isMe = msg.sender_id === currentUserId
                   const otherStatus = msg.statuses.find(s => s.user_id !== currentUserId)
                   const tickStatus = otherStatus?.status || 'sent'
+                  const rawText = getMessageText(msg)
+                  
+                  // Check if it's an email style message
+                  const isEmail = rawText && rawText.startsWith('[Email] Subject:')
+                  let emailSubjectText = ''
+                  let emailBodyText = rawText
+                  if (isEmail) {
+                    const subjectMatch = rawText.match(/^\[Email\] Subject:\s*(.*?)\n\n([\s\S]*)$/)
+                    if (subjectMatch) {
+                      emailSubjectText = subjectMatch[1]
+                      emailBodyText = subjectMatch[2]
+                    }
+                  }
+
+                  if (isEmail) {
+                    return (
+                      <div 
+                        key={msg.id}
+                        className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} w-full`}
+                      >
+                        <div className="p-5 rounded-2xl border text-sm max-w-[80%] bg-[var(--bg-card)] border-[var(--border-color)] shadow-md hover:shadow-lg transition-all">
+                          <div className="flex items-center gap-2 border-b border-[var(--border-color)] pb-3 mb-3">
+                            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+                              <Mail className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-[10px] text-[var(--text-secondary)] font-bold uppercase tracking-wider block">Official Connection Email</span>
+                              <h4 className="text-xs font-bold text-white truncate max-w-[250px]" title={emailSubjectText}>
+                                {emailSubjectText}
+                              </h4>
+                            </div>
+                          </div>
+                          
+                          <p className="text-xs text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
+                            {emailBodyText}
+                          </p>
+
+                          <div className="mt-3 flex justify-between items-center text-[9px] text-[var(--text-secondary)] font-bold border-t border-[var(--border-color)]/30 pt-2.5">
+                            <span>Sent via Connect-On Mail Channel</span>
+                            <span>{new Date(msg.created_at).toLocaleDateString()} at {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  }
                   
                   return (
                     <div 
@@ -1059,6 +1241,41 @@ export default function Chat() {
                                     </div>
                                   )
                                 }
+                                
+                                // CV / Resume custom viewcard logic
+                                const isCV = att.file_name.toLowerCase().includes('cv') || 
+                                             att.file_name.toLowerCase().includes('resume') || 
+                                             att.file_name.toLowerCase().includes('portfolio') || 
+                                             att.file_name.toLowerCase().endsWith('.pdf')
+                                
+                                if (isCV) {
+                                  return (
+                                    <div key={att.id} className="p-3 rounded-xl bg-black/20 hover:bg-black/35 border border-white/5 flex items-center justify-between gap-3 min-w-[240px] shadow-md transition-all group/file">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="p-2 rounded-lg bg-rose-500/15 text-rose-400 group-hover/file:scale-105 transition-all">
+                                          <FileText className="w-4.5 h-4.5" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-xs font-bold text-white truncate max-w-[140px]" title={att.file_name}>
+                                            {att.file_name}
+                                          </p>
+                                          <span className="text-[9px] text-[var(--text-secondary)] block font-semibold">
+                                            {formatFileSize(att.file_size)} • CV Card
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <a 
+                                        href={att.file_url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="px-2.5 py-1 rounded bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-[9px] font-black uppercase tracking-wider transition-all"
+                                      >
+                                        View
+                                      </a>
+                                    </div>
+                                  )
+                                }
+
                                 return (
                                   <a 
                                     key={att.id} 
@@ -1124,7 +1341,7 @@ export default function Chat() {
                                     </div>
 
                                     {/* Poll Question */}
-                                    <h4 className="text-sm font-bold text-white leading-snug break-words">
+                                    <h4 className="text-sm font-bold text-white leading-snug break-words font-heading">
                                       {poll.question}
                                     </h4>
 
@@ -1185,7 +1402,7 @@ export default function Chat() {
                             return <p className="leading-relaxed break-words">{rawText}</p>
                           })()}
                           
-                          {msg.encrypted_content && (
+                          {msg.encrypted_content && !isEmail && (
                             <div className="mt-2 flex gap-2 items-center text-[9px] font-semibold opacity-70 select-none">
                               <span className="text-[8px] text-[var(--text-secondary)] font-bold">AI TRANSLATE:</span>
                               <button 
@@ -1268,6 +1485,21 @@ export default function Chat() {
                   >
                     Cancel
                   </button>
+                </div>
+              )}
+
+              {/* Email Mode Subject composer line */}
+              {communicationMode === 'email' && (
+                <div className="px-8 py-3.5 border-t border-[var(--border-color)] flex items-center gap-3 bg-[var(--bg-card)]/50 select-none">
+                  <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Subject:</span>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Enter email subject line (e.g. Design Interview Feedback)..."
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    className="flex-1 bg-transparent text-xs text-white border-0 outline-none focus:ring-0 placeholder:text-slate-500 font-semibold"
+                  />
                 </div>
               )}
 
@@ -1411,7 +1643,7 @@ export default function Chat() {
                     <div className="relative flex-1">
                       <input 
                         type="text" 
-                        placeholder="Write your encrypted message..."
+                        placeholder={communicationMode === 'email' ? "Type your official onboarding or status email..." : "Write your encrypted message..."}
                         value={inputText}
                         onChange={handleInputChange}
                         className="w-full py-3 pl-4 pr-12 glass-input text-xs focus:ring-[var(--accent-glow)]"
@@ -1442,9 +1674,218 @@ export default function Chat() {
         </AnimatePresence>
       </section>
 
+      {/* COLUMN 4: COLLAPSIBLE CANDIDATE DETAILS PANEL + UTILITY BAR */}
+      {selectedChat && (
+        <div className="flex h-full border-l border-[var(--border-color)] flex-shrink-0 z-10 bg-transparent layer-content">
+          {/* Slide-out Candidate Details Panel */}
+          <AnimatePresence>
+            {showRightPanel && (
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 340, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                className="h-full flex flex-col overflow-y-auto bg-[var(--bg-surface)] backdrop-blur-md p-6 select-none"
+              >
+                {/* Panel Header */}
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-sm font-extrabold text-white tracking-wide uppercase font-heading">Candidate Profile</h3>
+                  <button 
+                    onClick={() => setShowRightPanel(false)}
+                    className="p-1.5 rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Candidate Overview Card */}
+                {(() => {
+                  const partner = getChatPartner(selectedChat)
+                  const ws = getPartnerWorkspaceInfo(partner)
+                  const status = partner ? (onlineStatuses[partner.id] || partner.profile?.presence_status || 'offline') : 'offline'
+                  const charSum = (partner?.username || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+                  const mockScore = (charSum % 3) + 3 // 3, 4, or 5
+                  
+                  return (
+                    <div className="space-y-6">
+                      <div className="flex flex-col items-center text-center p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] shadow-md">
+                        <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-[var(--accent)] mb-3 shadow-lg">
+                          <img 
+                            src={partner?.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'} 
+                            alt="" 
+                            className="w-full h-full object-cover"
+                          />
+                          <span className={`absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full border-2 border-[var(--bg-main)] ${
+                            status === 'online' ? 'bg-emerald-500' : status === 'away' ? 'bg-amber-500' : status === 'busy' ? 'bg-red-500' : 'bg-slate-500'
+                          }`} />
+                        </div>
+                        <h4 className="text-base font-bold text-white leading-snug truncate max-w-[200px] font-heading">
+                          {partner?.profile?.full_name || partner?.username}
+                        </h4>
+                        <p className="text-xs text-[var(--accent)] font-semibold mt-1">
+                          {ws.role}
+                        </p>
+                        {ws.company && (
+                          <p className="text-[10px] text-[var(--text-secondary)] font-semibold">
+                            @{ws.company}
+                          </p>
+                        )}
+                        
+                        <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+                          {ws.tags.length > 0 ? (
+                            ws.tags.map((tag: string, idx: number) => (
+                              <span key={idx} className="text-[9px] bg-white/5 border border-white/10 text-[var(--text-secondary)] px-2.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                                {tag}
+                              </span>
+                            ))
+                          ) : (
+                            ['Figma', 'Product', 'UX'].map((tag, idx) => (
+                              <span key={idx} className="text-[9px] bg-white/5 border border-white/10 text-[var(--text-secondary)] px-2.5 py-0.5 rounded-md font-bold uppercase tracking-wider">
+                                {tag}
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stage Rating / Progress */}
+                      <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)]">
+                        <div className="flex justify-between items-center text-xs font-bold mb-1">
+                          <span className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">Evaluation Stage</span>
+                          <span className="text-[var(--accent)]">{mockScore} / 5</span>
+                        </div>
+                        <div className="flex gap-1.5 mt-2">
+                          {[1, 2, 3, 4, 5].map((dot) => (
+                            <div 
+                              key={dot}
+                              className={`h-1.5 flex-1 rounded-full ${dot <= mockScore ? 'bg-[var(--accent)] shadow-sm shadow-[var(--accent-glow)]' : 'bg-[var(--border-color)]'}`}
+                            />
+                          ))}
+                        </div>
+                        <p className="text-[9px] text-[var(--text-secondary)] mt-2 italic leading-relaxed">
+                          Assessed based on technical skills, professional portfolio review, and matching tag specialties.
+                        </p>
+                      </div>
+
+                      {/* Contact Credentials */}
+                      <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)] space-y-3">
+                        <h4 className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-1">Contact Info</h4>
+                        
+                        <div className="flex items-center gap-2.5 text-xs text-[var(--text-secondary)]">
+                          <Mail className="w-4 h-4 text-[var(--accent)] flex-shrink-0" />
+                          <span className="truncate text-white font-semibold" title={partner?.email}>{partner?.email}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2.5 text-xs text-[var(--text-secondary)]">
+                          <Phone className="w-4 h-4 text-[var(--accent)] flex-shrink-0" />
+                          <span className="text-white font-semibold">{ws.alternatePhone || '+1 (555) 234-5678'}</span>
+                        </div>
+
+                        {ws.linkedin ? (
+                          <a 
+                            href={ws.linkedin} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2.5 text-xs text-[var(--text-secondary)] hover:text-white transition-colors"
+                          >
+                            <ExternalLink className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                            <span className="text-indigo-400 hover:underline truncate font-semibold">LinkedIn Profile</span>
+                          </a>
+                        ) : (
+                          <div className="flex items-center gap-2.5 text-xs text-[var(--text-secondary)]">
+                            <ExternalLink className="w-4 h-4 text-slate-500 flex-shrink-0" />
+                            <span className="text-slate-400 italic">No LinkedIn link</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Mock Interview Schedule */}
+                      <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--border-color)]">
+                        <h4 className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-3">Interview Schedules</h4>
+                        <div className="space-y-2.5">
+                          {[
+                            { title: 'Technical Coding Round', date: 'June 10, 10:00 AM', status: 'Scheduled', color: 'text-indigo-400 border-indigo-500/20 bg-indigo-500/5' },
+                            { title: 'System Design Assessment', date: 'June 12, 02:30 PM', status: 'Pending', color: 'text-amber-400 border-amber-500/20 bg-amber-500/5' },
+                            { title: 'HR Culture & Onboarding', date: 'June 15, 11:00 AM', status: 'Under Review', color: 'text-purple-400 border-purple-500/20 bg-purple-500/5' }
+                          ].map((sched, sIdx) => (
+                            <div key={sIdx} className="p-3 rounded-xl border border-white/5 bg-white/5 space-y-1.5 hover:border-white/10 transition-all select-none">
+                              <div className="flex justify-between items-start gap-1">
+                                <p className="text-xs font-black text-white leading-tight truncate max-w-[150px] font-heading">{sched.title}</p>
+                                <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${sched.color}`}>
+                                  {sched.status}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-[var(--text-secondary)] flex items-center gap-1 font-semibold">
+                                <CalendarIcon className="w-3 h-3 text-[var(--text-secondary)]" />
+                                <span>{sched.date}</span>
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                    </div>
+                  );
+                })()}
+
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Narrow Right Utility Icon Ribbon */}
+          <div className="w-14 h-full border-l border-[var(--border-color)] bg-[var(--bg-surface)] backdrop-blur-md flex flex-col items-center py-6 justify-between flex-shrink-0 select-none">
+            <div className="flex flex-col items-center gap-5">
+              {/* Toggle panel button if collapsed */}
+              {!showRightPanel && (
+                <button 
+                  onClick={() => setShowRightPanel(true)}
+                  className="p-2.5 rounded-xl border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-white hover:bg-white/5 transition-all mb-4 shadow-sm cursor-pointer"
+                  title="Expand Details"
+                >
+                  <ChevronLeft className="w-4.5 h-4.5" />
+                </button>
+              )}
+
+              {[
+                { icon: Cloud, label: 'Google Drive Sync' },
+                { icon: FileText, label: 'Notion Documents' },
+                { icon: MessageSquare, label: 'Slack Workspace' },
+                { icon: CalendarIcon, label: 'Interview Calendar' },
+                { icon: Folder, label: 'Shared Attachments' }
+              ].map((tool, tIdx) => {
+                const IconComponent = tool.icon
+                return (
+                  <button
+                    key={tIdx}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center border border-transparent hover:border-[var(--border-color)] hover:bg-white/5 text-[var(--text-secondary)] hover:text-white transition-all duration-300 relative group cursor-pointer"
+                    title={tool.label}
+                  >
+                    <IconComponent className="w-4.5 h-4.5" />
+                    
+                    {/* Hover Tooltip label */}
+                    <div className="absolute right-12 bg-[#0F172A] border border-[var(--border-color)] text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+                      {tool.label}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            <button
+              onClick={() => navigate('/settings')}
+              className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white/5 text-[var(--text-secondary)] hover:text-white transition-all cursor-pointer"
+              title="Global Settings"
+            >
+              <SettingsIcon className="w-4.5 h-4.5" />
+            </button>
+          </div>
+
+        </div>
+      )}
+
       {/* Report Modal */}
       {showReportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in layer-modal">
           <div className="glass-panel p-6 max-w-md w-full border border-[var(--border-color)]">
             <h3 className="text-lg font-heading font-bold text-white mb-2 flex items-center gap-2">
               <Flag className="w-5 h-5 text-amber-500" />
@@ -1486,13 +1927,13 @@ export default function Chat() {
 
       {/* AI Summary Modal */}
       {showSummaryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 layer-modal">
           <div className="glass-panel p-6 max-w-md w-full border border-[var(--border-color)]">
             <h3 className="text-lg font-heading font-bold text-white mb-2 flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-indigo-400" />
               <span>AI Chat Summary</span>
             </h3>
-            <p className="text-xs text-[var(--text-secondary)] mb-4">
+            <p className="text-xs text-[var(--text-secondary)] mb-4 font-semibold">
               Here is a generated summary of your recent conversations in this chat room:
             </p>
             <div className="bg-black/30 border border-white/5 rounded-xl p-4 text-xs leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap font-sans mb-4">
@@ -1516,7 +1957,7 @@ export default function Chat() {
 
       {/* Create Poll Modal */}
       {showCreatePollModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 layer-modal">
           <div className="glass-panel p-6 max-w-md w-full border border-[var(--border-color)]">
             <h3 className="text-lg font-heading font-bold text-white mb-2 flex items-center gap-2">
               <Activity className="w-5 h-5 text-emerald-400" />
@@ -1608,4 +2049,3 @@ export default function Chat() {
     </div>
   )
 }
-

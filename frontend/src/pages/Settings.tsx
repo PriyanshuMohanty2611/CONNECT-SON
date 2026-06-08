@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   User, Lock, Mail, Phone, Shield, Monitor, 
   Trash2, Check, ArrowLeft, RefreshCw, 
-  UserX, AlertCircle, Sparkles, LogOut, Globe, Camera
+  UserX, AlertCircle, Sparkles, LogOut, Globe, Camera, Briefcase
 } from 'lucide-react'
 import { useAuth, type UserProfile } from '../context/AuthContext'
 import { api } from '../services/api'
@@ -28,7 +28,7 @@ interface BlockedUserInfo {
   }
 }
 
-type TabType = 'profile' | 'security' | 'devices' | 'moderation' | 'e2ee'
+type TabType = 'profile' | 'security' | 'devices' | 'moderation' | 'e2ee' | 'avatar' | 'workspace'
 
 export default function Settings() {
   const navigate = useNavigate()
@@ -42,12 +42,217 @@ export default function Settings() {
 
   // Profile fields state
   const [fullName, setFullName] = useState(user?.profile?.full_name || '')
-  const [bio, setBio] = useState(user?.profile?.bio || '')
+  const [bio, setBio] = useState('')
   const [dob, setDob] = useState(user?.profile?.dob || '')
   const [gender, setGender] = useState(user?.profile?.gender || '')
   const [country, setCountry] = useState(user?.profile?.country || '')
   const [presence, setPresence] = useState(user?.profile?.presence_status || 'online')
   const [themePref, setThemePref] = useState(user?.profile?.theme_preference || 'dark')
+
+  // Workspace extended profile states
+  const [jobTitle, setJobTitle] = useState('')
+  const [company, setCompany] = useState('')
+  const [linkedin, setLinkedin] = useState('')
+  const [alternatePhone, setAlternatePhone] = useState('')
+  const [specialtyTags, setSpecialtyTags] = useState('')
+
+  // Avatar Designer options
+  const [avatarBg, setAvatarBg] = useState('tiimi')
+  const [avatarSkin, setAvatarSkin] = useState('#FFD1A9')
+  const [avatarFaceShape, setAvatarFaceShape] = useState('circle')
+  const [avatarEyes, setAvatarEyes] = useState('normal')
+  const [avatarMouth, setAvatarMouth] = useState('smile')
+  const [avatarHair, setAvatarHair] = useState('short')
+  const [avatarAccessory, setAvatarAccessory] = useState('none')
+
+  // Avatar builder helper
+  const renderAvatarSVG = (
+    bg: string,
+    skin: string,
+    shape: string,
+    eyes: string,
+    mouth: string,
+    hair: string,
+    acc: string
+  ) => {
+    let bgId = `avatar-bg-grad-${bg}`
+    return (
+      <svg 
+        id="custom-avatar-svg"
+        viewBox="0 0 100 100" 
+        className="w-full h-full rounded-2xl"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <linearGradient id={bgId} x1="0%" y1="0%" x2="100%" y2="100%">
+            {bg === 'tiimi' && (
+              <>
+                <stop offset="0%" stopColor="#5F3AFE" />
+                <stop offset="100%" stopColor="#311A99" />
+              </>
+            )}
+            {bg === 'sunset' && (
+              <>
+                <stop offset="0%" stopColor="#F43F5E" />
+                <stop offset="100%" stopColor="#3F0015" />
+              </>
+            )}
+            {bg === 'ocean' && (
+              <>
+                <stop offset="0%" stopColor="#0066FF" />
+                <stop offset="100%" stopColor="#001A4D" />
+              </>
+            )}
+            {bg === 'forest' && (
+              <>
+                <stop offset="0%" stopColor="#10B981" />
+                <stop offset="100%" stopColor="#064E3B" />
+              </>
+            )}
+            {bg === 'charcoal' && (
+              <>
+                <stop offset="0%" stopColor="#1E293B" />
+                <stop offset="100%" stopColor="#0F172A" />
+              </>
+            )}
+          </linearGradient>
+        </defs>
+
+        {shape === 'squircle' ? (
+          <rect x="0" y="0" width="100" height="100" rx="20" fill={`url(#${bgId})`} />
+        ) : shape === 'diamond' ? (
+          <polygon points="50,0 100,50 50,100 0,50" fill={`url(#${bgId})`} />
+        ) : (
+          <circle cx="50" cy="50" r="50" fill={`url(#${bgId})`} />
+        )}
+
+        {acc === 'stars' && (
+          <g fill="rgba(255,255,255,0.4)">
+            <polygon points="15,20 18,25 23,26 19,30 20,35 15,32 10,35 11,30 7,26 12,25" />
+            <polygon points="85,30 87,33 91,34 88,37 89,41 85,39 81,41 82,37 79,34 83,33" />
+          </g>
+        )}
+
+        <rect x="44" y="65" width="12" height="16" fill={skin} opacity="0.9" rx="2" />
+        <circle cx="50" cy="50" r="22" fill={skin} />
+
+        {eyes === 'normal' && (
+          <g fill="#111119">
+            <circle cx="43" cy="48" r="2.5" />
+            <circle cx="57" cy="48" r="2.5" />
+          </g>
+        )}
+        {eyes === 'winking' && (
+          <g stroke="#111119" strokeWidth="2" fill="none" strokeLinecap="round">
+            <path d="M40,48 Q43,45 46,48" />
+            <circle cx="57" cy="48" r="2.5" fill="#111119" />
+          </g>
+        )}
+        {eyes === 'glasses' && (
+          <g stroke="#111119" strokeWidth="1.5" fill="none">
+            <circle cx="42" cy="48" r="6" stroke="#4F2EE3" strokeWidth="2" />
+            <circle cx="58" cy="48" r="6" stroke="#4F2EE3" strokeWidth="2" />
+            <path d="M48,48 L52,48" stroke="#4F2EE3" strokeWidth="2" />
+            <circle cx="42" cy="48" r="1.5" fill="#111119" />
+            <circle cx="58" cy="48" r="1.5" fill="#111119" />
+          </g>
+        )}
+        {eyes === 'sunglasses' && (
+          <g fill="#1E293B" stroke="#0F172A" strokeWidth="1">
+            <polygon points="35,42 49,42 46,52 38,52" />
+            <polygon points="51,42 65,42 62,52 54,52" />
+            <path d="M49,44 L51,44" stroke="#1E293B" strokeWidth="2" />
+          </g>
+        )}
+
+        {mouth === 'smile' && (
+          <path d="M43,58 Q50,65 57,58" stroke="#111119" strokeWidth="2" fill="none" strokeLinecap="round" />
+        )}
+        {mouth === 'open' && (
+          <circle cx="50" cy="59" r="3" fill="#111119" />
+        )}
+        {mouth === 'neutral' && (
+          <line x1="44" y1="59" x2="56" y2="59" stroke="#111119" strokeWidth="2" strokeLinecap="round" />
+        )}
+        {mouth === 'grin' && (
+          <path d="M43,58 Q50,65 57,58" stroke="#111119" strokeWidth="2" fill="#FFF" strokeLinecap="round" />
+        )}
+
+        {hair === 'short' && (
+          <path d="M28,45 C28,25 72,25 72,45 C66,40 60,37 50,37 C40,37 34,40 28,45 Z" fill="#1E1B4B" />
+        )}
+        {hair === 'long' && (
+          <g fill="#4338CA">
+            <path d="M28,45 C28,25 72,25 72,45 C74,55 76,68 74,74 C68,70 60,65 50,65 C40,65 32,70 26,74 C24,68 26,55 28,45 Z" />
+            <path d="M28,40 C34,35 42,32 50,35 C58,32 66,35 72,40 C72,25 28,25 28,40 Z" fill="#312E81" />
+          </g>
+        )}
+        {hair === 'curly' && (
+          <g fill="#1E293B">
+            <circle cx="34" cy="38" r="7" />
+            <circle cx="44" cy="30" r="7" />
+            <circle cx="56" cy="30" r="7" />
+            <circle cx="66" cy="38" r="7" />
+            <circle cx="50" cy="34" r="8" />
+            <circle cx="32" cy="46" r="6" />
+            <circle cx="68" cy="46" r="6" />
+          </g>
+        )}
+        {hair === 'beanie' && (
+          <g>
+            <path d="M30,40 C30,22 70,22 70,40 Z" fill="#F43F5E" />
+            <rect x="27" y="37" width="46" height="6" rx="3" fill="#E11D48" />
+            <circle cx="50" cy="20" r="4" fill="#FFFFFF" />
+          </g>
+        )}
+        {hair === 'sidepart' && (
+          <path d="M28,42 C28,25 68,22 72,38 C62,32 45,35 28,42 Z" fill="#78350F" />
+        )}
+
+        {acc === 'headset' && (
+          <g stroke="#0F172A" strokeWidth="3" fill="none">
+            <path d="M26,50 C26,22 74,22 74,50" />
+            <rect x="22" y="44" width="6" height="12" rx="3" fill="#3B82F6" stroke="none" />
+            <rect x="72" y="44" width="6" height="12" rx="3" fill="#3B82F6" stroke="none" />
+            <path d="M25,53 L32,56" stroke="#0F172A" strokeWidth="1.5" />
+          </g>
+        )}
+        {acc === 'tie' && (
+          <polygon points="50,68 53,74 50,85 47,74" fill="#EF4444" />
+        )}
+      </svg>
+    )
+  }
+
+  const handleSaveAvatar = async () => {
+    setUploadingAvatar(true)
+    const svgElement = document.getElementById('custom-avatar-svg')
+    if (!svgElement) {
+      setUploadingAvatar(false)
+      showNotification('error', 'Could not render custom avatar.')
+      return
+    }
+
+    try {
+      const svgString = new XMLSerializer().serializeToString(svgElement)
+      const base64Data = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)))
+      
+      const success = await updateProfile({
+        avatar_url: base64Data
+      })
+      if (success) {
+        showNotification('success', 'Custom avatar saved and set to profile successfully!')
+        refreshUser()
+      } else {
+        showNotification('error', 'Failed to save custom avatar.')
+      }
+    } catch (err) {
+      console.error(err)
+      showNotification('error', 'Error compiling custom avatar.')
+    } finally {
+      setUploadingAvatar(false)
+    }
+  }
 
   // Email change state
   const [newEmail, setNewEmail] = useState('')
@@ -74,13 +279,40 @@ export default function Settings() {
     } else {
       // Pre-fill profile state
       setFullName(user.profile?.full_name || '')
-      setBio(user.profile?.bio || '')
       setDob(user.profile?.dob || '')
       setGender(user.profile?.gender || '')
       setCountry(user.profile?.country || '')
       setPresence(user.profile?.presence_status || 'online')
       setThemePref(user.profile?.theme_preference || 'dark')
       setPublicKey(user.profile?.public_key || null)
+
+      // Deserialize bio JSON if available
+      const rawBio = user.profile?.bio || ''
+      if (rawBio.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(rawBio)
+          setBio(parsed.bio || '')
+          setJobTitle(parsed.jobTitle || '')
+          setCompany(parsed.company || '')
+          setLinkedin(parsed.linkedin || '')
+          setAlternatePhone(parsed.alternatePhone || '')
+          setSpecialtyTags(parsed.tags ? parsed.tags.join(', ') : '')
+        } catch (e) {
+          setBio(rawBio)
+          setJobTitle('')
+          setCompany('')
+          setLinkedin('')
+          setAlternatePhone('')
+          setSpecialtyTags('')
+        }
+      } else {
+        setBio(rawBio)
+        setJobTitle('')
+        setCompany('')
+        setLinkedin('')
+        setAlternatePhone('')
+        setSpecialtyTags('')
+      }
     }
   }, [user, navigate])
 
@@ -123,9 +355,20 @@ export default function Settings() {
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+
+    // Build the packed JSON bio string
+    const packedBio = JSON.stringify({
+      bio,
+      jobTitle,
+      company,
+      linkedin,
+      alternatePhone,
+      tags: specialtyTags.split(',').map(t => t.trim()).filter(Boolean)
+    })
+
     const success = await updateProfile({
       full_name: fullName,
-      bio: bio,
+      bio: packedBio,
       dob: dob || null,
       gender: gender || null,
       country: country || null,
@@ -386,6 +629,8 @@ export default function Settings() {
           <nav className="space-y-1.5 flex-1">
             {[
               { id: 'profile', label: 'My Profile', icon: User },
+              { id: 'avatar', label: 'Avatar Studio', icon: Sparkles },
+              { id: 'workspace', label: 'Workspace Preferences', icon: Briefcase },
               { id: 'security', label: 'Security & Auth', icon: Shield },
               { id: 'devices', label: 'Active Devices', icon: Monitor },
               { id: 'moderation', label: 'Blocked Users', icon: UserX },
@@ -605,6 +850,322 @@ export default function Settings() {
                     >
                       {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                       Save Profile Changes
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* TAB: AVATAR DESIGNER */}
+              {activeTab === 'avatar' && (
+                <div>
+                  <h3 className="text-2xl font-bold font-heading mb-1 text-white">Avatar Studio</h3>
+                  <p className="text-sm text-[var(--text-secondary)] mb-6">Create and personalize your dynamic SVG profile avatar.</p>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    {/* Avatar Preview Card */}
+                    <div className="lg:col-span-5 flex flex-col items-center justify-center p-6 glass-card border border-[var(--border-color)] bg-white/5 rounded-2xl h-[340px]">
+                      <div className="w-48 h-48 rounded-2xl overflow-hidden border-2 border-[var(--accent)] shadow-xl relative bg-[var(--bg-main)]">
+                        {renderAvatarSVG(avatarBg, avatarSkin, avatarFaceShape, avatarEyes, avatarMouth, avatarHair, avatarAccessory)}
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={handleSaveAvatar}
+                        disabled={uploadingAvatar}
+                        className="btn-premium px-6 py-2.5 mt-6 w-full flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        {uploadingAvatar ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        <span>Publish to Profile</span>
+                      </button>
+                    </div>
+
+                    {/* Avatar Customization Options Controls */}
+                    <div className="lg:col-span-7 space-y-6 max-h-[550px] overflow-y-auto pr-2">
+                      {/* Background Gradient Selection */}
+                      <div className="space-y-2.5">
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Background Vibe</label>
+                        <div className="flex flex-wrap gap-2.5">
+                          {[
+                            { id: 'tiimi', label: 'Tiimi Violet', class: 'from-[#5F3AFE] to-[#311A99]' },
+                            { id: 'sunset', label: 'Sunset Rose', class: 'from-[#F43F5E] to-[#3F0015]' },
+                            { id: 'ocean', label: 'Ocean Blue', class: 'from-[#0066FF] to-[#001A4D]' },
+                            { id: 'forest', label: 'Forest Emerald', class: 'from-[#10B981] to-[#064E3B]' },
+                            { id: 'charcoal', label: 'Charcoal Dark', class: 'from-[#1E293B] to-[#0F172A]' }
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setAvatarBg(opt.id)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
+                                avatarBg === opt.id 
+                                  ? 'bg-[var(--accent)] text-white border-transparent shadow-md' 
+                                  : 'border-[var(--border-color)] bg-white/5 text-[var(--text-secondary)] hover:text-white'
+                              }`}
+                            >
+                              <span className={`w-3.5 h-3.5 rounded-full bg-gradient-to-br ${opt.class} border border-white/20`} />
+                              <span>{opt.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Face Shape */}
+                      <div className="space-y-2.5">
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Frame Shape</label>
+                        <div className="flex flex-wrap gap-2.5">
+                          {[
+                            { id: 'circle', label: 'Perfect Circle' },
+                            { id: 'squircle', label: 'Rounded Squircle' },
+                            { id: 'diamond', label: 'Cyber Diamond' }
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setAvatarFaceShape(opt.id)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                avatarFaceShape === opt.id 
+                                  ? 'bg-[var(--accent)] text-white border-transparent shadow-md' 
+                                  : 'border-[var(--border-color)] bg-white/5 text-[var(--text-secondary)] hover:text-white'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Skin Tone */}
+                      <div className="space-y-2.5">
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Skin Tone</label>
+                        <div className="flex flex-wrap gap-2.5">
+                          {[
+                            { id: '#FFD1A9', label: 'Peach' },
+                            { id: '#E0A96D', label: 'Golden' },
+                            { id: '#8C6239', label: 'Bronze' },
+                            { id: '#F1C27D', label: 'Classic Beige' }
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setAvatarSkin(opt.id)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
+                                avatarSkin === opt.id 
+                                  ? 'bg-[var(--accent)] text-white border-transparent shadow-md' 
+                                  : 'border-[var(--border-color)] bg-white/5 text-[var(--text-secondary)] hover:text-white'
+                              }`}
+                            >
+                              <span className="w-3.5 h-3.5 rounded-full border border-white/20" style={{ backgroundColor: opt.id }} />
+                              <span>{opt.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Eye Expression */}
+                      <div className="space-y-2.5">
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Eyes & Visors</label>
+                        <div className="flex flex-wrap gap-2.5">
+                          {[
+                            { id: 'normal', label: 'Focused Focus' },
+                            { id: 'winking', label: 'Playful Wink' },
+                            { id: 'glasses', label: 'Developer Specs' },
+                            { id: 'sunglasses', label: 'Cyber Sunglasses' }
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setAvatarEyes(opt.id)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                avatarEyes === opt.id 
+                                  ? 'bg-[var(--accent)] text-white border-transparent shadow-md' 
+                                  : 'border-[var(--border-color)] bg-white/5 text-[var(--text-secondary)] hover:text-white'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Mouth Expression */}
+                      <div className="space-y-2.5">
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Mouth Expressions</label>
+                        <div className="flex flex-wrap gap-2.5">
+                          {[
+                            { id: 'smile', label: 'Friendly Smile' },
+                            { id: 'open', label: 'Energetic Open' },
+                            { id: 'neutral', label: 'Neutral Calm' },
+                            { id: 'grin', label: 'Cheeky Grin' }
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setAvatarMouth(opt.id)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                avatarMouth === opt.id 
+                                  ? 'bg-[var(--accent)] text-white border-transparent shadow-md' 
+                                  : 'border-[var(--border-color)] bg-white/5 text-[var(--text-secondary)] hover:text-white'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Hair Style */}
+                      <div className="space-y-2.5">
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Hair Style / Headwear</label>
+                        <div className="flex flex-wrap gap-2.5">
+                          {[
+                            { id: 'short', label: 'Clean Crop' },
+                            { id: 'long', label: 'Flowing Locks' },
+                            { id: 'curly', label: 'Curly Afro' },
+                            { id: 'beanie', label: 'Vibrant Beanie' },
+                            { id: 'sidepart', label: 'Side Part' }
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setAvatarHair(opt.id)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                avatarHair === opt.id 
+                                  ? 'bg-[var(--accent)] text-white border-transparent shadow-md' 
+                                  : 'border-[var(--border-color)] bg-white/5 text-[var(--text-secondary)] hover:text-white'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Accessories */}
+                      <div className="space-y-2.5">
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Accents & Accessories</label>
+                        <div className="flex flex-wrap gap-2.5">
+                          {[
+                            { id: 'none', label: 'None' },
+                            { id: 'headset', label: 'Over-Ear Headset' },
+                            { id: 'tie', label: 'Professional Tie' },
+                            { id: 'stars', label: 'Ambient Sparkles' }
+                          ].map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setAvatarAccessory(opt.id)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                avatarAccessory === opt.id 
+                                  ? 'bg-[var(--accent)] text-white border-transparent shadow-md' 
+                                  : 'border-[var(--border-color)] bg-white/5 text-[var(--text-secondary)] hover:text-white'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: WORKSPACE PREFERENCES */}
+              {activeTab === 'workspace' && (
+                <div>
+                  <h3 className="text-2xl font-bold font-heading mb-1 text-white">Workspace Preferences</h3>
+                  <p className="text-sm text-[var(--text-secondary)] mb-6">Modify business credentials, tags, and contacts visible to your chat connections.</p>
+
+                  <form onSubmit={handleUpdateProfile} className="space-y-5 max-w-xl">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1.5">Job Title</label>
+                        <input
+                          type="text"
+                          value={jobTitle}
+                          onChange={(e) => setJobTitle(e.target.value)}
+                          placeholder="e.g. Senior UIX Designer"
+                          className="w-full px-4 py-2.5 glass-input text-sm bg-[var(--bg-main)]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1.5">Company / Organization</label>
+                        <input
+                          type="text"
+                          value={company}
+                          onChange={(e) => setCompany(e.target.value)}
+                          placeholder="e.g. Tiimi Corp"
+                          className="w-full px-4 py-2.5 glass-input text-sm bg-[var(--bg-main)]"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1.5">LinkedIn Profile Link</label>
+                      <input
+                        type="url"
+                        value={linkedin}
+                        onChange={(e) => setLinkedin(e.target.value)}
+                        placeholder="e.g. https://linkedin.com/in/fauzanar"
+                        className="w-full px-4 py-2.5 glass-input text-sm bg-[var(--bg-main)]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1.5">Alternate Contact Phone</label>
+                      <input
+                        type="text"
+                        value={alternatePhone}
+                        onChange={(e) => setAlternatePhone(e.target.value)}
+                        placeholder="e.g. +62 921 019 112"
+                        className="w-full px-4 py-2.5 glass-input text-sm bg-[var(--bg-main)]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1.5">Specialty / Role Tags (Comma Separated)</label>
+                      <input
+                        type="text"
+                        value={specialtyTags}
+                        onChange={(e) => setSpecialtyTags(e.target.value)}
+                        placeholder="e.g. Figma, React, Product, UX"
+                        className="w-full px-4 py-2.5 glass-input text-sm bg-[var(--bg-main)]"
+                      />
+                      
+                      {specialtyTags.trim() && (
+                        <div className="flex flex-wrap gap-1.5 mt-2.5">
+                          {specialtyTags.split(',').map((tag, tIdx) => {
+                            const trimmed = tag.trim();
+                            if (!trimmed) return null;
+                            return (
+                              <span key={tIdx} className="text-[10px] bg-[var(--accent-glow)] border border-[var(--accent)]/20 text-[var(--accent)] font-bold px-2.5 py-0.5 rounded-md">
+                                {trimmed}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1.5">Brief Professional Bio (Appends to workspace card)</label>
+                      <textarea
+                        value={bio}
+                        onChange={(e) => setBio(e.target.value)}
+                        placeholder="Say a few words about your professional background..."
+                        className="w-full px-4 py-3 glass-input text-sm h-24 resize-none bg-[var(--bg-main)]"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="btn-premium px-6 py-3 mt-4 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      <span>Save Workspace Changes</span>
                     </button>
                   </form>
                 </div>
