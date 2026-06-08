@@ -177,7 +177,19 @@ export default function Dashboard() {
       navigate('/login')
     }
   }, [user, authLoading, navigate])
-  
+
+  // Show loading spinner while auth state is being determined (prevents blank screen flash)
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+          <p className="text-[var(--text-muted)] text-sm font-medium">Loading your workspace...</p>
+        </div>
+      </div>
+    )
+  }
+
   // Discovery State
   const [discoverUsers, setDiscoverUsers] = useState<DiscoverUser[]>([])
   const [loading, setLoading] = useState(true)

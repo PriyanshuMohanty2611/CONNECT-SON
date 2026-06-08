@@ -124,18 +124,19 @@ export default function Register() {
     setLocalError(null)
 
     setLoading(true)
-    const success = await updateProfile({
+    // Profile update is optional - navigate to dashboard regardless of success/failure
+    // The user is already authenticated after OTP verification in step 2
+    await updateProfile({
       dob: dob || undefined,
       gender: gender || undefined,
       country: country || undefined,
       bio: bio || undefined,
       presence_status: 'online'
+    }).catch(() => {
+      // Profile update failed silently - not critical, user can update later in Settings
     })
     setLoading(false)
-
-    if (success) {
-      navigate('/')
-    }
+    navigate('/')
   }
 
   const displayError = localError || authError
