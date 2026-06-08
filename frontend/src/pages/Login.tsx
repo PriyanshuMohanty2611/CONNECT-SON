@@ -144,6 +144,8 @@ export default function Login() {
                       <User className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type="text" 
+                        name="username"
+                        autocomplete="username"
                         required
                         placeholder="username or email" 
                         value={usernameOrEmail}
@@ -168,6 +170,8 @@ export default function Login() {
                       <Lock className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type={showPassword ? 'text' : 'password'} 
+                        name="password"
+                        autocomplete="current-password"
                         required
                         placeholder="password" 
                         value={password}
@@ -245,6 +249,8 @@ export default function Login() {
                       <Mail className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type="email" 
+                        name="email"
+                        autocomplete="email"
                         required
                         placeholder="john@example.com" 
                         value={forgotEmail}
@@ -292,6 +298,8 @@ export default function Login() {
                     <label className="text-xs font-semibold text-[var(--text-secondary)] block mb-1">6-Digit Reset Code</label>
                     <input 
                       type="text" 
+                      name="one-time-code"
+                      autocomplete="one-time-code"
                       required
                       placeholder="123456" 
                       maxLength={6}
@@ -307,6 +315,8 @@ export default function Login() {
                       <Lock className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type="password" 
+                        name="new-password"
+                        autocomplete="new-password"
                         required
                         placeholder="••••••" 
                         value={newPassword}
@@ -322,6 +332,8 @@ export default function Login() {
                       <Lock className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type="password" 
+                        name="new-password-confirm"
+                        autocomplete="new-password"
                         required
                         placeholder="••••••" 
                         value={confirmPassword}

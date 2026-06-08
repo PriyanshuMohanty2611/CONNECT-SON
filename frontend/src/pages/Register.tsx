@@ -196,6 +196,8 @@ export default function Register() {
                       <User className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type="text" 
+                        name="name"
+                        autocomplete="name"
                         required
                         placeholder="Enter your full name" 
                         value={fullName}
@@ -211,6 +213,8 @@ export default function Register() {
                       <User className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type="text" 
+                        name="username"
+                        autocomplete="username"
                         required
                         placeholder="Choose a unique username" 
                         value={username}
@@ -226,6 +230,8 @@ export default function Register() {
                       <Mail className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type="email" 
+                        name="email"
+                        autocomplete="email"
                         required
                         placeholder="Enter your email address" 
                         value={email}
@@ -241,6 +247,8 @@ export default function Register() {
                       <Phone className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type="tel" 
+                        name="tel"
+                        autocomplete="tel"
                         placeholder="Enter your phone number" 
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
@@ -256,6 +264,8 @@ export default function Register() {
                         <Lock className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                         <input 
                           type="password" 
+                          name="new-password"
+                          autocomplete="new-password"
                           required
                           placeholder="Create a password" 
                           value={password}
@@ -270,6 +280,8 @@ export default function Register() {
                         <Lock className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                         <input 
                           type="password" 
+                          name="new-password-confirm"
+                          autocomplete="new-password"
                           required
                           placeholder="Re-enter your password" 
                           value={confirmPassword}
@@ -379,6 +391,8 @@ export default function Register() {
                       <Calendar className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type="date" 
+                        name="bday"
+                        autocomplete="bday"
                         value={dob}
                         onChange={(e) => setDob(e.target.value)}
                         className="w-full pl-10 pr-4 py-3 glass-input text-sm"
@@ -407,6 +421,8 @@ export default function Register() {
                       <Globe className="absolute left-3 top-3.5 w-4 h-4 text-[var(--text-secondary)]" />
                       <input 
                         type="text" 
+                        name="country"
+                        autocomplete="country"
                         placeholder="Enter your country" 
                         value={country}
                         onChange={(e) => setCountry(e.target.value)}
