@@ -145,7 +145,7 @@ export default function Login() {
                       <input 
                         type="text" 
                         name="username"
-                        autocomplete="username"
+                        autoComplete="username"
                         required
                         placeholder="username or email" 
                         value={usernameOrEmail}
@@ -171,7 +171,7 @@ export default function Login() {
                       <input 
                         type={showPassword ? 'text' : 'password'} 
                         name="password"
-                        autocomplete="current-password"
+                        autoComplete="current-password"
                         required
                         placeholder="password" 
                         value={password}
@@ -250,7 +250,7 @@ export default function Login() {
                       <input 
                         type="email" 
                         name="email"
-                        autocomplete="email"
+                        autoComplete="email"
                         required
                         placeholder="john@example.com" 
                         value={forgotEmail}
@@ -299,7 +299,7 @@ export default function Login() {
                     <input 
                       type="text" 
                       name="one-time-code"
-                      autocomplete="one-time-code"
+                      autoComplete="one-time-code"
                       required
                       placeholder="123456" 
                       maxLength={6}
@@ -316,7 +316,7 @@ export default function Login() {
                       <input 
                         type="password" 
                         name="new-password"
-                        autocomplete="new-password"
+                        autoComplete="new-password"
                         required
                         placeholder="••••••" 
                         value={newPassword}
@@ -333,7 +333,7 @@ export default function Login() {
                       <input 
                         type="password" 
                         name="new-password-confirm"
-                        autocomplete="new-password"
+                        autoComplete="new-password"
                         required
                         placeholder="••••••" 
                         value={confirmPassword}

@@ -101,6 +101,10 @@ export default function Chat() {
   const [uploadingFile, setUploadingFile] = useState(false)
   const [attachmentsToSend, setAttachmentsToSend] = useState<string[]>([]) // uploaded file IDs
   const [attachmentPreviews, setAttachmentPreviews] = useState<any[]>([]) // previews to show in input
+  const [showCreatePollModal, setShowCreatePollModal] = useState(false)
+  const [pollQuestion, setPollQuestion] = useState('')
+  const [pollOptions, setPollOptions] = useState<string[]>(['', ''])
+
 
   // Typing state
   const typingTimeoutRef = useRef<any>(null)
@@ -523,6 +527,65 @@ export default function Chat() {
     setShowEmojiPicker(false)
   }
 
+  // Create and send a poll
+  const handleCreatePollSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!pollQuestion.trim() || !selectedChat) return
+    const activeOptions = pollOptions.filter(opt => opt.trim() !== '')
+    if (activeOptions.length < 2) {
+      alert("Please provide at least 2 options for the poll.")
+      return
+    }
+
+    const pollData = {
+      type: 'poll',
+      question: pollQuestion.trim(),
+      options: activeOptions
+    }
+    const text = JSON.stringify(pollData)
+
+    let encryptedContent = text
+    let nonce: string | null = null
+    let isEncrypted = false
+
+    if (selectedChat.type === 'direct') {
+      const partner = getChatPartner(selectedChat)
+      const partnerPubKey = partner?.profile?.public_key
+      if (partnerPubKey) {
+        try {
+          const enc = await encryptMessage(text, partnerPubKey, currentUserUsername || '')
+          encryptedContent = enc.ciphertext
+          nonce = enc.nonce
+          isEncrypted = true
+        } catch (err) {
+          console.error("Encryption failed, sending as fallback plaintext:", err)
+        }
+      }
+    }
+
+    const payload = {
+      chat_id: selectedChat.id,
+      encrypted_content: encryptedContent,
+      nonce: nonce,
+      is_encrypted: isEncrypted,
+      reply_to_id: null,
+      attachment_ids: undefined
+    }
+
+    if (socket) {
+      socket.emit('send_message', payload, (res: any) => {
+        if (res && res.error) {
+          alert(`Error sending poll: ${res.error}`)
+        }
+      })
+    }
+
+    setPollQuestion('')
+    setPollOptions(['', ''])
+    setShowCreatePollModal(false)
+  }
+
+
   // Voice Recording Handlers
   const startRecording = async () => {
     try {
@@ -723,45 +786,72 @@ export default function Chat() {
               const status = partner ? (onlineStatuses[partner.id] || partner.profile?.presence_status || 'offline') : 'offline'
               const active = selectedChat?.id === c.id
 
+              // Determine a mock role & status based on username length / char code for variety
+              const charSum = (partner?.username || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+              
+              const roles = ["Lead Designer", "Fullstack Developer", "Talent Acquisition", "HR Specialist", "Product Manager"]
+              const statuses = ["Replied", "Active", "Shortlisted", "Applied", "Under Review"]
+              const statusColors = [
+                "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+                "bg-purple-500/10 text-purple-400 border-purple-500/20",
+                "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                "bg-rose-500/10 text-rose-400 border-rose-500/20"
+              ]
+
+              const role = roles[charSum % roles.length]
+              const itemStatus = statuses[charSum % statuses.length]
+              const statusColor = statusColors[charSum % statusColors.length]
+
               return (
                 <button
                   key={c.id}
                   onClick={() => selectChatRoom(c)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all cursor-pointer text-left border ${
+                  className={`w-full flex items-start gap-3 p-3.5 rounded-xl transition-all cursor-pointer text-left border mb-2 ${
                     active 
-                      ? 'bg-gradient-to-r from-[var(--accent)] to-[#0052cc] text-white border-white/10 shadow-lg shadow-[var(--accent-glow)] scale-[1.02]' 
-                      : 'border-transparent hover:bg-white/5 text-[var(--text-secondary)] hover:text-white hover:translate-x-1'
+                      ? 'bg-gradient-to-br from-[var(--accent)] to-[#4f2ee3] text-white border-transparent shadow-lg shadow-[var(--accent-glow)] scale-[1.01]' 
+                      : 'border-[var(--border-color)] bg-[var(--bg-card)] hover:bg-white/5 text-[var(--text-secondary)] hover:text-white hover:translate-x-0.5'
                   }`}
                 >
-                  <div className="relative flex-shrink-0">
+                  <div className="relative flex-shrink-0 mt-0.5">
                     <img 
                       src={partner?.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'} 
                       alt="" 
-                      className="w-11 h-11 rounded-full object-cover border border-[var(--border-color)]"
+                      className="w-10 h-10 rounded-full object-cover border border-white/10"
                     />
-                    <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-[var(--bg-main)] ${
+                    <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[var(--bg-main)] ${
                       status === 'online' ? 'bg-emerald-500' : status === 'away' ? 'bg-amber-500' : status === 'busy' ? 'bg-red-500' : 'bg-slate-500'
                     }`} />
                   </div>
                   
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline mb-0.5">
-                      <h4 className="text-sm font-bold truncate text-white">
+                  <div className="flex-1 min-w-0 flex flex-col gap-1">
+                    <div className="flex justify-between items-baseline w-full">
+                      <h4 className="text-xs font-black truncate text-white">
                         {partner?.profile?.full_name || partner?.username}
                       </h4>
                       {c.last_message && (
-                        <span className="text-[10px] opacity-60 flex-shrink-0 ml-1">
+                        <span className="text-[9px] opacity-60 flex-shrink-0 ml-1 font-semibold">
                           {new Date(c.last_message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       )}
                     </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`text-[9px] font-bold opacity-80 ${active ? 'text-white/80' : 'text-[var(--text-secondary)]'}`}>
+                        {role}
+                      </span>
+                      <span className="text-[8px] opacity-30">•</span>
+                      <span className={`text-[8px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider border ${active ? 'bg-white/20 text-white border-white/20' : statusColor}`}>
+                        {itemStatus}
+                      </span>
+                    </div>
                     
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs truncate max-w-[150px] opacity-80">
+                    <div className="flex items-center justify-between mt-1">
+                      <p className={`text-[10px] truncate max-w-[140px] ${active ? 'text-white/95' : 'text-[var(--text-secondary)]/90'}`}>
                         {getMessageText(c.last_message) || (c.last_message?.attachments?.length ? 'Shared a file' : 'Start chatting...')}
                       </p>
                       {c.unread_count > 0 && (
-                        <span className="h-5 min-w-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center">
+                        <span className="h-4 min-w-4 px-1 rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center">
                           {c.unread_count}
                         </span>
                       )}
@@ -771,6 +861,7 @@ export default function Chat() {
               )
             })
           )}
+
         </div>
       </section>
 
@@ -986,7 +1077,113 @@ export default function Chat() {
                             </div>
                           )}
 
-                          <p className="leading-relaxed break-words">{getMessageText(msg)}</p>
+                          {(() => {
+                            const rawText = getMessageText(msg)
+                            if (rawText && rawText.startsWith('{"type":"poll"')) {
+                              try {
+                                const poll = JSON.parse(rawText)
+                                // Calculate total reactions for voting
+                                const votes = msg.reactions.filter(r => r.reaction.startsWith('v_'))
+                                const totalVotes = votes.length
+                                
+                                // Group votes by option index
+                                const optionsVotes = poll.options.map((_: any, idx: number) => {
+                                  const optionKey = `v_${idx}`
+                                  const optionVotes = votes.filter(r => r.reaction === optionKey)
+                                  const percent = totalVotes > 0 ? Math.round((optionVotes.length / totalVotes) * 100) : 0
+                                  const userHasVoted = optionVotes.some(v => v.user_id === currentUserId)
+                                  
+                                  // Find profile details of voters for avatars display
+                                  const voterProfiles = optionVotes.map(v => {
+                                    return selectedChat.participants.find(p => p.id === v.user_id)
+                                  }).filter(Boolean) as UserProfile[]
+
+                                  return { idx, optionVotes, percent, userHasVoted, voterProfiles }
+                                })
+
+                                const handleVote = (optionIndex: number) => {
+                                  if (socket) {
+                                    socket.emit('add_reaction', {
+                                      message_id: msg.id,
+                                      reaction: `v_${optionIndex}`
+                                    })
+                                  }
+                                }
+
+                                return (
+                                  <div className="w-full min-w-[260px] md:min-w-[320px] p-2 space-y-4">
+                                    {/* Poll header */}
+                                    <div className="flex items-center gap-2">
+                                      <div className="p-1.5 rounded-lg bg-[var(--accent)]/15 text-[var(--accent)]">
+                                        <Activity className="w-4 h-4 text-[var(--accent)]" />
+                                      </div>
+                                      <div>
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)]">Team Poll</span>
+                                        <p className="text-[10px] text-[var(--text-secondary)]">{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}</p>
+                                      </div>
+                                    </div>
+
+                                    {/* Poll Question */}
+                                    <h4 className="text-sm font-bold text-white leading-snug break-words">
+                                      {poll.question}
+                                    </h4>
+
+                                    {/* Poll Options */}
+                                    <div className="space-y-2.5">
+                                      {poll.options.map((opt: string, idx: number) => {
+                                        const { percent, userHasVoted, voterProfiles } = optionsVotes[idx]
+                                        return (
+                                          <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => handleVote(idx)}
+                                            className={`w-full relative p-3 rounded-xl border transition-all text-left flex flex-col justify-center gap-1 cursor-pointer overflow-hidden ${
+                                              userHasVoted
+                                                ? 'border-[var(--accent)] bg-[var(--accent-glow)]'
+                                                : 'border-white/5 bg-white/5 hover:bg-white/10'
+                                            }`}
+                                          >
+                                            {/* Progress bar overlay */}
+                                            <div 
+                                              className="absolute left-0 top-0 bottom-0 bg-[var(--accent)]/10 transition-all duration-500 ease-out" 
+                                              style={{ width: `${percent}%` }}
+                                            />
+
+                                            <div className="relative z-10 flex justify-between items-center w-full">
+                                              <span className={`text-xs font-semibold break-words pr-2 ${userHasVoted ? 'text-white font-bold' : 'text-[var(--text-primary)]'}`}>
+                                                {opt}
+                                              </span>
+                                              <span className="text-xs font-black text-[var(--accent)]">
+                                                {percent}%
+                                              </span>
+                                            </div>
+
+                                            {/* Voters mini avatars */}
+                                            {voterProfiles.length > 0 && (
+                                              <div className="relative z-10 flex -space-x-1.5 mt-1">
+                                                {voterProfiles.map((voter: UserProfile) => (
+                                                  <img
+                                                    key={voter.id}
+                                                    src={voter.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'}
+                                                    alt={voter.username}
+                                                    title={`@${voter.username}`}
+                                                    className="w-4 h-4 rounded-full object-cover border border-[var(--bg-main)]"
+                                                  />
+                                                ))}
+                                              </div>
+                                            )}
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  </div>
+                                )
+                              } catch (e) {
+                                return <p className="leading-relaxed break-words">{rawText}</p>
+                              }
+                            }
+                            return <p className="leading-relaxed break-words">{rawText}</p>
+                          })()}
                           
                           {msg.encrypted_content && (
                             <div className="mt-2 flex gap-2 items-center text-[9px] font-semibold opacity-70 select-none">
@@ -1106,8 +1303,20 @@ export default function Chat() {
                         className="hidden" 
                       />
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAttachMenu(false)
+                        setShowCreatePollModal(true)
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[var(--border-color)] text-xs font-semibold cursor-pointer text-slate-200 text-left bg-transparent border-0"
+                    >
+                      <Activity className="w-4 h-4 text-emerald-400" />
+                      <span>Create Poll</span>
+                    </button>
                   </div>
                 )}
+
 
                 {attachmentPreviews.length > 0 && (
                   <div className="flex gap-3 mb-3 p-3 glass-card border border-[var(--border-color)] rounded-xl overflow-x-auto">
@@ -1304,6 +1513,99 @@ export default function Chat() {
           </div>
         </div>
       )}
+
+      {/* Create Poll Modal */}
+      {showCreatePollModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="glass-panel p-6 max-w-md w-full border border-[var(--border-color)]">
+            <h3 className="text-lg font-heading font-bold text-white mb-2 flex items-center gap-2">
+              <Activity className="w-5 h-5 text-emerald-400" />
+              <span>Create Team Poll</span>
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)] mb-4">
+              Gather opinions from your chat members. Provide a question and at least 2 options.
+            </p>
+
+            <form onSubmit={handleCreatePollSubmit} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] block mb-1">
+                  Poll Question
+                </label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="E.g., Which feature should we prioritize next?"
+                  value={pollQuestion}
+                  onChange={(e) => setPollQuestion(e.target.value)}
+                  className="w-full px-4 py-2.5 glass-input text-xs"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] block mb-1">
+                  Options
+                </label>
+                {pollOptions.map((opt, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <input 
+                      type="text" 
+                      required={idx < 2}
+                      placeholder={`Option ${idx + 1}`}
+                      value={opt}
+                      onChange={(e) => {
+                        const newOpts = [...pollOptions]
+                        newOpts[idx] = e.target.value
+                        setPollOptions(newOpts)
+                      }}
+                      className="flex-1 px-4 py-2.5 glass-input text-xs"
+                    />
+                    {pollOptions.length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => setPollOptions(prev => prev.filter((_, i) => i !== idx))}
+                        className="px-2.5 py-2 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 text-rose-400 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {pollOptions.length < 6 && (
+                  <button
+                    type="button"
+                    onClick={() => setPollOptions(prev => [...prev, ''])}
+                    className="text-xs font-bold text-[var(--accent)] hover:underline mt-1 cursor-pointer block bg-transparent border-0"
+                  >
+                    + Add Option
+                  </button>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreatePollModal(false)
+                    setPollQuestion('')
+                    setPollOptions(['', ''])
+                  }}
+                  className="px-4 py-2 rounded-xl border border-[var(--border-color)] hover:bg-white/5 text-xs text-white cursor-pointer font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-premium px-5 py-2 text-xs cursor-pointer font-semibold"
+                >
+                  Create Poll
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+

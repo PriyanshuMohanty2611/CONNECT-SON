@@ -75,6 +75,20 @@
     --shadow-premium: 0 8px 32px 0 rgba(3, 105, 161, 0.1);
   }
 
+  [data-theme='tiimi'] {
+    --bg-main: #F4F3F8; /* Soft light grayish violet */
+    --bg-surface: rgba(255, 255, 255, 0.7);
+    --bg-card: rgba(255, 255, 255, 0.9);
+    --border-color: rgba(112, 112, 137, 0.12);
+    --text-primary: #1C1C24;
+    --text-secondary: #707089;
+    --accent: #5F3AFE; /* Sleek indigo/violet primary */
+    --accent-hover: #4F2EE3;
+    --accent-glow: rgba(95, 58, 254, 0.12);
+    --shadow-premium: 0 10px 30px rgba(112, 112, 137, 0.06);
+  }
+
+
   body {
     background: var(--bg-main);
     color: var(--text-primary);

@@ -581,6 +581,7 @@ export default function Settings() {
                           <option value="glassmorphism">Glassmorphic Glow</option>
                           <option value="gradient">Hyperspace Gradient</option>
                           <option value="midnight">Deep Midnight</option>
+                          <option value="tiimi">Tiimi Soft Violet</option>
                         </select>
                       </div>
                     </div>

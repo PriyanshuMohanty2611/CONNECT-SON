@@ -197,7 +197,7 @@ export default function Register() {
                       <input 
                         type="text" 
                         name="name"
-                        autocomplete="name"
+                        autoComplete="name"
                         required
                         placeholder="Enter your full name" 
                         value={fullName}
@@ -214,7 +214,7 @@ export default function Register() {
                       <input 
                         type="text" 
                         name="username"
-                        autocomplete="username"
+                        autoComplete="username"
                         required
                         placeholder="Choose a unique username" 
                         value={username}
@@ -231,7 +231,7 @@ export default function Register() {
                       <input 
                         type="email" 
                         name="email"
-                        autocomplete="email"
+                        autoComplete="email"
                         required
                         placeholder="Enter your email address" 
                         value={email}
@@ -248,7 +248,7 @@ export default function Register() {
                       <input 
                         type="tel" 
                         name="tel"
-                        autocomplete="tel"
+                        autoComplete="tel"
                         placeholder="Enter your phone number" 
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
@@ -265,7 +265,7 @@ export default function Register() {
                         <input 
                           type="password" 
                           name="new-password"
-                          autocomplete="new-password"
+                          autoComplete="new-password"
                           required
                           placeholder="Create a password" 
                           value={password}
@@ -281,7 +281,7 @@ export default function Register() {
                         <input 
                           type="password" 
                           name="new-password-confirm"
-                          autocomplete="new-password"
+                          autoComplete="new-password"
                           required
                           placeholder="Re-enter your password" 
                           value={confirmPassword}
@@ -392,7 +392,7 @@ export default function Register() {
                       <input 
                         type="date" 
                         name="bday"
-                        autocomplete="bday"
+                        autoComplete="bday"
                         value={dob}
                         onChange={(e) => setDob(e.target.value)}
                         className="w-full pl-10 pr-4 py-3 glass-input text-sm"
@@ -422,7 +422,7 @@ export default function Register() {
                       <input 
                         type="text" 
                         name="country"
-                        autocomplete="country"
+                        autoComplete="country"
                         placeholder="Enter your country" 
                         value={country}
                         onChange={(e) => setCountry(e.target.value)}
