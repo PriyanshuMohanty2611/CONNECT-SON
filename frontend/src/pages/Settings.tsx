@@ -84,6 +84,14 @@ export default function Settings() {
     }
   }, [user, navigate])
 
+  useEffect(() => {
+    return () => {
+      // Revert data-theme to saved setting if they navigate away without saving
+      const savedTheme = user?.profile?.theme_preference || 'dark'
+      document.documentElement.setAttribute('data-theme', savedTheme)
+    }
+  }, [user])
+
   // Dynamic fetch depending on tab
   useEffect(() => {
     if (!user) return
@@ -573,7 +581,11 @@ export default function Settings() {
                         <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1.5">Theme Vibe</label>
                         <select
                           value={themePref}
-                          onChange={(e) => setThemePref(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            setThemePref(val)
+                            document.documentElement.setAttribute('data-theme', val)
+                          }}
                           className="w-full px-4 py-2.5 glass-input text-sm bg-[var(--bg-main)]"
                         >
                           <option value="dark">Carbon Dark</option>

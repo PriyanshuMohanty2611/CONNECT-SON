@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
@@ -9,6 +9,7 @@ import Chat from './pages/Chat'
 
 function CinematicBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'dark');
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -17,6 +18,18 @@ function CinematicBackground() {
     };
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  useEffect(() => {
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+          setTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+        }
+      });
+    });
+    observer.observe(document.documentElement, { attributes: true });
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -95,6 +108,12 @@ function CinematicBackground() {
     const animate = () => {
       ctx.clearRect(0, 0, width, height);
 
+      // Determine drawing colors based on theme
+      const isLightTheme = theme === 'light' || theme === 'tiimi';
+      const particleRGB = isLightTheme ? '95, 58, 254' : '0, 102, 255'; // Indigo/Violet for light theme, Electric Blue for dark
+      const glowRGB = isLightTheme ? '95, 58, 254' : '0, 102, 255';
+      const highlightRGB = isLightTheme ? '79, 70, 229' : '0, 150, 255';
+
       // Precalculate distances to mouse for physics and hover effects
       const particlesWithMouseDist = particles.map(p => {
         if (mouse.active) {
@@ -139,12 +158,12 @@ function CinematicBackground() {
         // Add soft glow effect to active particles near mouse
         if (mouse.active && dist < mouseConnectionDistance) {
           ctx.shadowBlur = 8;
-          ctx.shadowColor = 'rgba(0, 102, 255, 0.8)';
+          ctx.shadowColor = `rgba(${glowRGB}, 0.8)`;
         } else {
           ctx.shadowBlur = 0;
         }
 
-        ctx.fillStyle = `rgba(0, 102, 255, ${finalAlpha})`;
+        ctx.fillStyle = `rgba(${particleRGB}, ${finalAlpha})`;
         ctx.fill();
       });
       ctx.shadowBlur = 0; // Reset shadow for lines
@@ -163,7 +182,7 @@ function CinematicBackground() {
 
           if (dist < connectionDistance) {
             let lineAlpha = (1 - dist / connectionDistance) * 0.08;
-            let strokeColor = `rgba(0, 102, 255, ${lineAlpha})`;
+            let strokeColor = `rgba(${particleRGB}, ${lineAlpha})`;
             let strokeWidth = 0.8;
 
             // If both particles are hovering near the mouse, draw a bright, glowing neural path!
@@ -172,7 +191,7 @@ function CinematicBackground() {
               const factor2 = 1 - dist2 / mouseConnectionDistance;
               const avgFactor = (factor1 + factor2) / 2;
               lineAlpha = 0.08 + avgFactor * 0.45; // Up to 50%+ opacity
-              strokeColor = `rgba(0, 150, 255, ${lineAlpha})`;
+              strokeColor = `rgba(${highlightRGB}, ${lineAlpha})`;
               strokeWidth = 1.2;
             }
 
@@ -195,7 +214,7 @@ function CinematicBackground() {
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(mouse.x, mouse.y);
-            ctx.strokeStyle = `rgba(0, 130, 255, ${lineAlpha})`;
+            ctx.strokeStyle = `rgba(${highlightRGB}, ${lineAlpha})`;
             ctx.lineWidth = 1.0;
             ctx.stroke();
           }
@@ -213,11 +232,11 @@ function CinematicBackground() {
       document.removeEventListener('mouseleave', handleWindowMouseLeave);
       cancelAnimationFrame(animationFrameId);
     };
-  }, []);
+  }, [theme]);
 
   return (
-    <div className="fixed inset-0 pointer-events-none z-[-20] overflow-hidden bg-[#050508]">
-      <div className="cinematic-bg" />
+    <div className="fixed inset-0 pointer-events-none z-[-20] overflow-hidden bg-[var(--bg-main)] transition-colors duration-500">
+      <div className="cinematic-bg transition-all duration-500" />
       <div className="cinematic-glow-1" />
       <div className="cinematic-glow-2" />
       <div className="mouse-glow" />
