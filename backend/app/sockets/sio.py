@@ -227,11 +227,14 @@ async def typing(sid, data):
         return
         
     # Cache typing status in Redis
-    redis = get_redis_client()
-    if is_typing:
-        await redis.set(f"typing:{chat_id}:{user_id}", "1", ex=10)
-    else:
-        await redis.delete(f"typing:{chat_id}:{user_id}")
+    try:
+        redis = get_redis_client()
+        if is_typing:
+            await redis.set(f"typing:{chat_id}:{user_id}", "1", ex=10)
+        else:
+            await redis.delete(f"typing:{chat_id}:{user_id}")
+    except Exception as e:
+        print(f"[WARNING] Failed to cache typing status in Redis: {e}")
         
     # Broadcast typing state to others in chat room (skip sender)
     await sio.emit(

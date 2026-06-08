@@ -61,8 +61,15 @@ def get_redis_client():
         
     if settings.REDIS_URL:
         try:
-            redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-            print("[INFO] Redis connection pool initialized.")
+            redis_client = aioredis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_timeout=5.0,
+                socket_connect_timeout=5.0,
+                retry_on_timeout=True,
+                health_check_interval=30
+            )
+            print("[INFO] Redis connection pool initialized with resilient settings.")
         except Exception as e:
             print(f"[WARNING] Failed to connect to Redis, falling back to MockRedis: {e}")
             redis_client = MockRedis()
