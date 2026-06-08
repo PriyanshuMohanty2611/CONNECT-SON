@@ -7,7 +7,7 @@ import {
   Check, AlertCircle, ShieldAlert, Database, Users, Power
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { adminApi } from '../services/api'
+import { adminApi, API_HOST_URL } from '../services/api'
 import type { AdminReport, AdminAuditLog, AdminBackup, AdminUser } from '../services/api'
 
 type TabType = 'reports' | 'logs' | 'backups' | 'users'
@@ -428,7 +428,7 @@ export default function Admin() {
                                 </p>
                               </div>
                               <a
-                                href={`http://localhost:8000${backup.download_url}`}
+                                href={`${API_HOST_URL}${backup.download_url}`}
                                 download
                                 className="p-3 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 text-rose-400 rounded-xl transition-all cursor-pointer shrink-0"
                               >

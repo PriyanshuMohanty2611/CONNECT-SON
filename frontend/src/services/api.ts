@@ -1,4 +1,5 @@
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_HOST_URL = API_BASE_URL.replace('/api/v1', '');
 
 export interface APIResponse<T> {
   data: T | null;
@@ -192,4 +193,4 @@ export const adminApi = {
   }
 };
 
-export { API_BASE_URL };
+export { API_BASE_URL, API_HOST_URL };
