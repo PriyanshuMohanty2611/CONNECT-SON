@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./connect_on.db")
     
     # CORS
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"]
+    BACKEND_CORS_ORIGINS: List[str] = []
     
     # Cloudinary Credentials (Optional fallbacks for local dev)
     CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
@@ -37,6 +37,25 @@ class Settings(BaseSettings):
 
     def __init__(self, **values):
         super().__init__(**values)
+        
+        # Configure CORS Origins with defaults and environments
+        cors_env = os.getenv("BACKEND_CORS_ORIGINS")
+        default_origins = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+            "https://connect-son-pm18.onrender.com",
+            "https://connect-son-pm18.onrender.com/"
+        ]
+        if cors_env:
+            try:
+                import json
+                self.BACKEND_CORS_ORIGINS = json.loads(cors_env)
+            except Exception:
+                self.BACKEND_CORS_ORIGINS = [x.strip() for x in cors_env.split(",") if x.strip()]
+        else:
+            self.BACKEND_CORS_ORIGINS = default_origins
+            
         if self.DATABASE_URL:
             if self.DATABASE_URL.startswith("postgres://"):
                 self.DATABASE_URL = self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
