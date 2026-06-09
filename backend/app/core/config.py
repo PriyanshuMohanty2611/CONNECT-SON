@@ -23,15 +23,15 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: List[str] = []
     
     # Cloudinary Credentials (Optional fallbacks for local dev)
-    CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
-    CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")
-    CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
+    CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "CONNECT-SON")
+    CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "939893696595212")
+    CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "F2m0FEO4jbTqECN9cGBg_PI9q2U")
     
     # Local Storage Fallback
     UPLOAD_DIR: str = "static/uploads"
     
     # Redis caching (optional, falls back to memory if empty)
-    REDIS_URL: str = os.getenv("REDIS_URL", "")
+    REDIS_URL: str = os.getenv("REDIS_URL", "rediss://default:gQAAAAAAAYBSAAIgcDIzNDQwNTBiZjBhYzQ0MTVlYWE5MWJmN2YzNmJiZjJjZA@complete-albacore-98386.upstash.io:6379")
 
     # Mailer (Gmail SMTP)
     EMAIL_USER: str = os.getenv("EMAIL_USER", "chat.end2end@gmail.com")

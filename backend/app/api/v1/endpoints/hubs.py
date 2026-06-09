@@ -14,7 +14,7 @@ from sqlalchemy import or_, and_, func
 
 from app.core.database import get_db
 from app.api.deps import get_current_active_user, get_current_user
-from app.models.models import User, Profile, Friendship, FriendRequest, Chat, Message, Attachment, UserSession
+from app.models.models import User, Profile, Friendship, FriendRequest, Chat, Message, Attachment, UserSession, CalendarEvent
 from app.services.media_service import upload_file_to_storage
 from app.schemas.hubs import (
     CalendarEventCreate, CalendarEventResponse,
@@ -233,41 +233,14 @@ def get_calendar_events(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-
-    # Using raw SQL or standard query
-    # Since we mapped tables dynamically, let's query the connection or engine:
-    events_raw = db.execute(
-        func.select(
-            func.literal_column("id"),
-            func.literal_column("title"),
-            func.literal_column("description"),
-            func.literal_column("event_type"),
-            func.literal_column("start_time"),
-            func.literal_column("reminder_minutes_before"),
-            func.literal_column("is_notified"),
-            func.literal_column("created_at")
-        ).select_from(func.table("calendar_events")).where(func.literal_column("user_id") == current_user.id)
-    ).all()
-    
+    events = db.query(CalendarEvent).filter(CalendarEvent.user_id == current_user.id).all()
     result = []
-    for row in events_raw:
-        # Check date filter if set
-        start_dt = datetime.datetime.fromisoformat(row[4].replace('Z', '+00:00')) if isinstance(row[4], str) else row[4]
-        if month and start_dt.month != month:
+    for event in events:
+        if month and event.start_time.month != month:
             continue
-        if year and start_dt.year != year:
+        if year and event.start_time.year != year:
             continue
-        result.append({
-            "id": row[0],
-            "title": row[1],
-            "description": row[2],
-            "event_type": row[3],
-            "start_time": start_dt,
-            "reminder_minutes_before": row[5],
-            "is_notified": bool(row[6]),
-            "created_at": row[7],
-            "user_id": current_user.id
-        })
+        result.append(event)
     return result
 
 @router.post("/calendar/events", response_model=CalendarEventResponse)
@@ -277,32 +250,21 @@ def create_calendar_event(
     db: Session = Depends(get_db)
 ):
     event_id = str(uuid.uuid4())
-    now = datetime.datetime.utcnow().isoformat()
-    db.execute(
-        func.insert(func.table("calendar_events")).values(
-            id=event_id,
-            user_id=current_user.id,
-            title=event_in.title,
-            description=event_in.description,
-            event_type=event_in.event_type,
-            start_time=event_in.start_time.isoformat(),
-            reminder_minutes_before=event_in.reminder_minutes_before,
-            is_notified=0,
-            created_at=now
-        )
+    new_event = CalendarEvent(
+        id=event_id,
+        user_id=current_user.id,
+        title=event_in.title,
+        description=event_in.description,
+        event_type=event_in.event_type,
+        start_time=event_in.start_time,
+        reminder_minutes_before=event_in.reminder_minutes_before,
+        is_notified=False,
+        created_at=datetime.datetime.utcnow()
     )
+    db.add(new_event)
     db.commit()
-    return {
-        "id": event_id,
-        "user_id": current_user.id,
-        "title": event_in.title,
-        "description": event_in.description,
-        "event_type": event_in.event_type,
-        "start_time": event_in.start_time,
-        "reminder_minutes_before": event_in.reminder_minutes_before,
-        "is_notified": False,
-        "created_at": datetime.datetime.fromisoformat(now)
-    }
+    db.refresh(new_event)
+    return new_event
 
 @router.delete("/calendar/events/{event_id}")
 def delete_calendar_event(
@@ -310,17 +272,14 @@ def delete_calendar_event(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    res = db.execute(
-        func.delete(func.table("calendar_events")).where(
-            and_(
-                func.literal_column("id") == event_id,
-                func.literal_column("user_id") == current_user.id
-            )
-        )
-    )
-    db.commit()
-    if res.rowcount == 0:
+    event = db.query(CalendarEvent).filter(
+        CalendarEvent.id == event_id,
+        CalendarEvent.user_id == current_user.id
+    ).first()
+    if not event:
         raise HTTPException(status_code=404, detail="Event not found.")
+    db.delete(event)
+    db.commit()
     return {"message": "Event deleted successfully."}
 
 
