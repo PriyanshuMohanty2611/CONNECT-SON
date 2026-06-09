@@ -37,7 +37,7 @@ def upload_file_to_storage(file: UploadFile, folder: str = "connect_on") -> str:
             # Log error and fall back to local storage
             print(f"Cloudinary upload failed: {e}. Falling back to local storage.")
     
-    # Local fallback
+    # Local fallback - save file and return relative URL path
     ext = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
     unique_filename = f"{uuid.uuid4()}{ext}"
     file_path = os.path.join(settings.UPLOAD_DIR, unique_filename)
@@ -46,5 +46,5 @@ def upload_file_to_storage(file: UploadFile, folder: str = "connect_on") -> str:
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    # Return local URL format accessible via static mount
-    return f"http://localhost:8000/static/uploads/{unique_filename}"
+    # Return relative URL - accessible via /static/uploads mounted route
+    return f"/static/uploads/{unique_filename}"

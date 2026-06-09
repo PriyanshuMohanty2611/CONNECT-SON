@@ -17,6 +17,9 @@ class MockRedis:
         if key in self.data:
             del self.data[key]
         return True
+
+    async def exists(self, key):
+        return 1 if key in self.data else 0
         
     async def sadd(self, key, value):
         if key not in self.sets:

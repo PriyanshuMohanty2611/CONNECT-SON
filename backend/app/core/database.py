@@ -10,11 +10,13 @@ if settings.DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 else:
     # PostgreSQL connection pooling properties
+    # Keep pool small for Neon free tier (max 5 connections via pooler)
     pool_kwargs = {
-        "pool_size": 20,
+        "pool_size": 5,
         "max_overflow": 10,
         "pool_recycle": 300,
-        "pool_pre_ping": True
+        "pool_pre_ping": True,
+        "pool_timeout": 30,
     }
 
 engine = create_engine(

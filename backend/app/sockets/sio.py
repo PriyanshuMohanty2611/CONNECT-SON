@@ -308,6 +308,7 @@ async def add_reaction(sid, data):
 import uuid
 import json
 from sqlalchemy import func, and_, or_
+from app.models.models import GameSession, GameLeaderboard
 
 def create_game_session(db, chat_id, game_type, player1_id):
     chat = db.query(Chat).filter(Chat.id == chat_id).first()
@@ -318,7 +319,6 @@ def create_game_session(db, chat_id, game_type, player1_id):
         raise ValueError("No partner found in chat")
         
     session_id = str(uuid.uuid4())
-    now = datetime.datetime.utcnow().isoformat()
     
     board_state = ""
     if game_type == "tictactoe":
@@ -328,155 +328,102 @@ def create_game_session(db, chat_id, game_type, player1_id):
     elif game_type == "chess":
         board_state = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
         
-    db.execute(
-        func.insert(func.table("game_sessions")).values(
-            id=session_id,
-            chat_id=chat_id,
-            game_type=game_type,
-            status="pending",
-            board_state=board_state,
-            player1_id=player1_id,
-            player2_id=player2.id,
-            turn_player_id=player1_id,
-            winner_id=None,
-            created_at=now,
-            updated_at=now
-        )
+    game_sess = GameSession(
+        id=session_id,
+        chat_id=chat_id,
+        game_type=game_type,
+        status="pending",
+        board_state=board_state,
+        player1_id=player1_id,
+        player2_id=player2.id,
+        turn_player_id=player1_id,
+        winner_id=None
     )
+    db.add(game_sess)
     db.commit()
+    db.refresh(game_sess)
     return {
-        "id": session_id,
-        "chat_id": chat_id,
-        "game_type": game_type,
-        "status": "pending",
-        "board_state": board_state,
-        "player1_id": player1_id,
-        "player2_id": player2.id,
-        "turn_player_id": player1_id,
-        "winner_id": None
+        "id": game_sess.id,
+        "chat_id": game_sess.chat_id,
+        "game_type": game_sess.game_type,
+        "status": game_sess.status,
+        "board_state": game_sess.board_state,
+        "player1_id": game_sess.player1_id,
+        "player2_id": game_sess.player2_id,
+        "turn_player_id": game_sess.turn_player_id,
+        "winner_id": game_sess.winner_id
     }
 
 def accept_game_session(db, session_id):
-    db.execute(
-        func.update(func.table("game_sessions")).where(
-            func.literal_column("id") == session_id
-        ).values(
-            status="playing",
-            updated_at=datetime.datetime.utcnow().isoformat()
-        )
-    )
+    game_sess = db.query(GameSession).filter(GameSession.id == session_id).first()
+    if not game_sess:
+        return None
+    game_sess.status = "playing"
     db.commit()
-    
-    row = db.execute(
-        func.select(
-            func.literal_column("id"),
-            func.literal_column("chat_id"),
-            func.literal_column("game_type"),
-            func.literal_column("player1_id"),
-            func.literal_column("player2_id")
-        ).select_from(func.table("game_sessions")).where(func.literal_column("id") == session_id)
-    ).first()
-    if row:
-        return {
-            "id": row[0],
-            "chat_id": row[1],
-            "game_type": row[2],
-            "status": "playing",
-            "player1_id": row[3],
-            "player2_id": row[4]
-        }
-    return None
+    db.refresh(game_sess)
+    return {
+        "id": game_sess.id,
+        "chat_id": game_sess.chat_id,
+        "game_type": game_sess.game_type,
+        "status": game_sess.status,
+        "player1_id": game_sess.player1_id,
+        "player2_id": game_sess.player2_id
+    }
 
 def update_game_state(db, session_id, board_state, turn_player_id, winner_id=None):
-    status_str = "completed" if winner_id else "playing"
-    
-    db.execute(
-        func.update(func.table("game_sessions")).where(
-            func.literal_column("id") == session_id
-        ).values(
-            board_state=board_state,
-            turn_player_id=turn_player_id,
-            winner_id=winner_id,
-            status=status_str,
-            updated_at=datetime.datetime.utcnow().isoformat()
-        )
-    )
+    game_sess = db.query(GameSession).filter(GameSession.id == session_id).first()
+    if not game_sess:
+        return None
+
+    game_sess.board_state = board_state
+    game_sess.turn_player_id = turn_player_id
+    game_sess.winner_id = winner_id
+    game_sess.status = "completed" if winner_id else "playing"
     db.commit()
     
     if winner_id:
-        sess = db.execute(
-            func.select(
-                func.literal_column("player1_id"),
-                func.literal_column("player2_id"),
-                func.literal_column("game_type")
-            ).select_from(func.table("game_sessions")).where(func.literal_column("id") == session_id)
-        ).first()
-        
-        if sess:
-            p1, p2, gtype = sess
-            def update_stats(uid, w, l, d):
-                exists = db.execute(
-                    func.select(1).select_from(func.table("game_leaderboards")).where(
-                        func.literal_column("user_id") == uid
-                    )
-                ).first()
-                if exists:
-                    db.execute(
-                        func.update(func.table("game_leaderboards")).where(
-                            func.literal_column("user_id") == uid
-                        ).values(
-                            wins=func.literal_column("wins") + w,
-                            losses=func.literal_column("losses") + l,
-                            draws=func.literal_column("draws") + d
-                        )
-                    )
-                else:
-                    db.execute(
-                        func.insert(func.table("game_leaderboards")).values(
-                            id=str(uuid.uuid4()),
-                            user_id=uid,
-                            wins=w,
-                            losses=l,
-                            draws=d,
-                            game_type=gtype
-                        )
-                    )
-            if winner_id == "draw":
-                update_stats(p1, 0, 0, 1)
-                update_stats(p2, 0, 0, 1)
+        p1 = game_sess.player1_id
+        p2 = game_sess.player2_id
+        gtype = game_sess.game_type
+
+        def update_stats(uid, w, l, d):
+            lb = db.query(GameLeaderboard).filter(GameLeaderboard.user_id == uid).first()
+            if lb:
+                lb.wins += w
+                lb.losses += l
+                lb.draws += d
             else:
-                loser = p2 if winner_id == p1 else p1
-                update_stats(winner_id, 1, 0, 0)
-                update_stats(loser, 0, 1, 0)
-            db.commit()
-            
-    row = db.execute(
-        func.select(
-            func.literal_column("id"),
-            func.literal_column("chat_id"),
-            func.literal_column("game_type"),
-            func.literal_column("board_state"),
-            func.literal_column("player1_id"),
-            func.literal_column("player2_id"),
-            func.literal_column("turn_player_id"),
-            func.literal_column("winner_id"),
-            func.literal_column("status")
-        ).select_from(func.table("game_sessions")).where(func.literal_column("id") == session_id)
-    ).first()
-    
-    if row:
-        return {
-            "id": row[0],
-            "chat_id": row[1],
-            "game_type": row[2],
-            "board_state": row[3],
-            "player1_id": row[4],
-            "player2_id": row[5],
-            "turn_player_id": row[6],
-            "winner_id": row[7],
-            "status": row[8]
-        }
-    return None
+                lb = GameLeaderboard(
+                    id=str(uuid.uuid4()),
+                    user_id=uid,
+                    wins=w,
+                    losses=l,
+                    draws=d,
+                    game_type=gtype
+                )
+                db.add(lb)
+
+        if winner_id == "draw":
+            update_stats(p1, 0, 0, 1)
+            update_stats(p2, 0, 0, 1)
+        else:
+            loser = p2 if winner_id == p1 else p1
+            update_stats(winner_id, 1, 0, 0)
+            update_stats(loser, 0, 1, 0)
+        db.commit()
+
+    db.refresh(game_sess)
+    return {
+        "id": game_sess.id,
+        "chat_id": game_sess.chat_id,
+        "game_type": game_sess.game_type,
+        "board_state": game_sess.board_state,
+        "player1_id": game_sess.player1_id,
+        "player2_id": game_sess.player2_id,
+        "turn_player_id": game_sess.turn_player_id,
+        "winner_id": game_sess.winner_id,
+        "status": game_sess.status
+    }
 
 @sio.event
 async def game_invite(sid, data):

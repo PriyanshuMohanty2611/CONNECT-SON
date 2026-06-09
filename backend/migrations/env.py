@@ -26,7 +26,8 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = settings.DATABASE_URL
+    # Use direct (non-pooler) URL for DDL compatibility
+    url = settings.MIGRATION_DATABASE_URL or settings.DATABASE_URL
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -40,9 +41,10 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    # Build engine directly from the settings URL
+    # Build engine directly from the migration URL (direct, no pooler)
+    migration_url = settings.MIGRATION_DATABASE_URL or settings.DATABASE_URL
     connectable = create_engine(
-        settings.DATABASE_URL,
+        migration_url,
         poolclass=pool.NullPool,
     )
 

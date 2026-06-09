@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./connect_on.db")
+    # For migrations/schema changes that require direct (non-pooled) connection
+    MIGRATION_DATABASE_URL: str = os.getenv("MIGRATION_DATABASE_URL", os.getenv("DATABASE_URL", "").replace("-pooler", ""))
     
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = []
@@ -58,12 +60,10 @@ class Settings(BaseSettings):
         else:
             self.BACKEND_CORS_ORIGINS = default_origins
             
-        if self.DATABASE_URL:
-            if self.DATABASE_URL.startswith("postgres://"):
-                self.DATABASE_URL = self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
-            if "-pooler" in self.DATABASE_URL:
-                print("[INFO] Neon pooler connection detected. Converting to direct connection for Alembic DDL support.")
-                self.DATABASE_URL = self.DATABASE_URL.replace("-pooler", "")
+        if self.DATABASE_URL and self.DATABASE_URL.startswith("postgres://"):
+            self.DATABASE_URL = self.DATABASE_URL.replace("postgres://", "postgresql://", 1)
+        if self.MIGRATION_DATABASE_URL and self.MIGRATION_DATABASE_URL.startswith("postgres://"):
+            self.MIGRATION_DATABASE_URL = self.MIGRATION_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
     class Config:
         case_sensitive = True

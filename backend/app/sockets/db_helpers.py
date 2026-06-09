@@ -256,9 +256,9 @@ def store_reaction(db: Session, user_id: str, message_id: str, reaction_emoji: s
     return {
         "message_id": message_id,
         "user_id": user_id,
-        "reaction": reaction_emoji,
+        "reaction": reaction_val if reaction_val is not None else None,
         "chat_id": chat_id,
-        "removed": reaction_emoji is None or (existing is not None and existing.reaction == reaction_emoji)
+        "removed": False
     }
 
 def get_notifications_by_target(db: Session, target_id: str, type: str) -> list:
