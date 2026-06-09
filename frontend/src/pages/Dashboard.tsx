@@ -382,11 +382,7 @@ export default function Dashboard() {
     formData.append('caption', storyCaption)
     formData.append('filter_preset', storyFilter)
 
-    const { error: apiErr } = await api.post('/stories/', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
+    const { error: apiErr } = await api.post('/stories/', formData)
 
     if (!apiErr) {
       setShowCreateStory(false)

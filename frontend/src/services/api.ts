@@ -51,6 +51,29 @@ async function handleRefresh(): Promise<string | null> {
   }
 }
 
+function rewriteStaticUrls(obj: any): any {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'string') {
+    if (obj.startsWith('/static/')) {
+      return `${API_HOST_URL}${obj}`;
+    }
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => rewriteStaticUrls(item));
+  }
+  if (typeof obj === 'object') {
+    const newObj: any = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        newObj[key] = rewriteStaticUrls(obj[key]);
+      }
+    }
+    return newObj;
+  }
+  return obj;
+}
+
 export const api = {
   async request<T>(
     endpoint: string,
@@ -90,8 +113,12 @@ export const api = {
       let responseData = null;
       if (contentType && contentType.includes('application/json')) {
         responseData = await response.json();
+        responseData = rewriteStaticUrls(responseData);
       } else {
         responseData = await response.text();
+        if (typeof responseData === 'string' && responseData.startsWith('/static/')) {
+          responseData = `${API_HOST_URL}${responseData}`;
+        }
       }
 
       if (!response.ok) {
