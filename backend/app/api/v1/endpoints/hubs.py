@@ -233,9 +233,7 @@ def get_calendar_events(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    query = db.query(func.distinct(CalendarEventResponse)).select_from(User).filter(
-        # We query raw SQLite table matching user_id
-    )
+
     # Using raw SQL or standard query
     # Since we mapped tables dynamically, let's query the connection or engine:
     events_raw = db.execute(
