@@ -49,7 +49,11 @@ class Settings(BaseSettings):
             "https://connect-son-pp.onrender.com",
             "https://connect-son-pp.onrender.com/",
             "https://connect-son-pm18.onrender.com",
-            "https://connect-son-pm18.onrender.com/"
+            "https://connect-son-pm18.onrender.com/",
+            "https://connect-son-back.onrender.com",
+            "https://connect-son-back.onrender.com/",
+            "https://connect-son.onrender.com",
+            "https://connect-son.onrender.com/"
         ]
         if cors_env:
             try:
