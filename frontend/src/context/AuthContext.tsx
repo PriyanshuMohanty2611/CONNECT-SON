@@ -61,8 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await api.get<UserProfile>('/users/me')
       if (response.data) {
         setUser(response.data)
-        // Apply theme preference from user profile
-        const theme = response.data.profile?.theme_preference || 'dark'
+        const theme = response.data.profile?.theme_preference || 'light'
         document.documentElement.setAttribute('data-theme', theme)
         
         // Initialize E2EE silently
@@ -226,7 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     clearTokens()
     setUser(null)
-    document.documentElement.setAttribute('data-theme', 'dark')
+    document.documentElement.setAttribute('data-theme', 'light')
   }
 
   const updateProfile = async (profileData: any) => {

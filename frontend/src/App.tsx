@@ -9,7 +9,7 @@ import Chat from './pages/Chat'
 
 function CinematicBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'dark');
+  const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'light');
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -24,7 +24,7 @@ function CinematicBackground() {
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
-          setTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+          setTheme(document.documentElement.getAttribute('data-theme') || 'light');
         }
       });
     });
@@ -110,9 +110,9 @@ function CinematicBackground() {
 
       // Determine drawing colors based on theme
       const isLightTheme = theme === 'light' || theme === 'tiimi';
-      const particleRGB = isLightTheme ? '95, 58, 254' : '0, 102, 255'; // Indigo/Violet for light theme, Electric Blue for dark
-      const glowRGB = isLightTheme ? '95, 58, 254' : '0, 102, 255';
-      const highlightRGB = isLightTheme ? '79, 70, 229' : '0, 150, 255';
+      const particleRGB = isLightTheme ? '0, 102, 255' : '0, 102, 255'; // Royal/Electric Blue
+      const glowRGB = isLightTheme ? '0, 102, 255' : '0, 102, 255';
+      const highlightRGB = isLightTheme ? '0, 82, 204' : '0, 150, 255'; // Richer contrast blue for light background
 
       // Precalculate distances to mouse for physics and hover effects
       const particlesWithMouseDist = particles.map(p => {
