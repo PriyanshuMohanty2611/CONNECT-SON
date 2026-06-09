@@ -292,6 +292,11 @@ def _send_email_raw(target_email: str, subject: str, html_body: str):
             )
             db.add(log_record)
             db.commit()
+            try:
+                from app.services.cleanup_service import cap_records
+                cap_records(db, EventLog, {}, 100)
+            except Exception as cleanup_err:
+                print(f"[CLEANUP ERROR] Failed to cap event logs: {cleanup_err}")
             db.close()
             print(f"[EMAIL SERVICE] Logged email error to database event_logs table.")
         except Exception as log_err:

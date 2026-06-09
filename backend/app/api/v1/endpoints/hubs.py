@@ -14,7 +14,7 @@ from sqlalchemy import or_, and_, func
 
 from app.core.database import get_db
 from app.api.deps import get_current_active_user, get_current_user
-from app.models.models import User, Profile, Friendship, FriendRequest, Chat, Message, Attachment, UserSession, CalendarEvent
+from app.models.models import User, Profile, Friendship, FriendRequest, Chat, Message, Attachment, UserSession, CalendarEvent, DailyGoal, Habit, CloudFile, Note
 from app.services.media_service import upload_file_to_storage
 from app.schemas.hubs import (
     CalendarEventCreate, CalendarEventResponse,
@@ -264,6 +264,11 @@ def create_calendar_event(
     db.add(new_event)
     db.commit()
     db.refresh(new_event)
+    try:
+        from app.services.cleanup_service import cap_records
+        cap_records(db, CalendarEvent, {"user_id": current_user.id}, 100)
+    except Exception as cleanup_err:
+        print(f"[CLEANUP ERROR] Failed to cap calendar events: {cleanup_err}")
     return new_event
 
 @router.delete("/calendar/events/{event_id}")
@@ -340,6 +345,11 @@ def create_goal(
         )
     )
     db.commit()
+    try:
+        from app.services.cleanup_service import cap_records
+        cap_records(db, DailyGoal, {"user_id": current_user.id}, 100)
+    except Exception as cleanup_err:
+        print(f"[CLEANUP ERROR] Failed to cap daily goals: {cleanup_err}")
     return {
         "id": goal_id,
         "user_id": current_user.id,
@@ -423,6 +433,11 @@ def create_habit(
         )
     )
     db.commit()
+    try:
+        from app.services.cleanup_service import cap_records
+        cap_records(db, Habit, {"user_id": current_user.id}, 100)
+    except Exception as cleanup_err:
+        print(f"[CLEANUP ERROR] Failed to cap habits: {cleanup_err}")
     return {
         "id": habit_id,
         "user_id": current_user.id,
@@ -752,6 +767,11 @@ def upload_memory(
         )
     )
     db.commit()
+    try:
+        from app.services.cleanup_service import cap_memories
+        cap_memories(db, current_user.id, partner_id, 100)
+    except Exception as cleanup_err:
+        print(f"[CLEANUP ERROR] Failed to cap memories: {cleanup_err}")
     return {
         "id": id_,
         "user_id": current_user.id,
@@ -858,6 +878,11 @@ def create_note(
         )
     )
     db.commit()
+    try:
+        from app.services.cleanup_service import cap_records
+        cap_records(db, Note, {"owner_id": current_user.id}, 100)
+    except Exception as cleanup_err:
+        print(f"[CLEANUP ERROR] Failed to cap notes: {cleanup_err}")
     return {
         "id": note_id,
         "title": note_in.title,
@@ -1056,7 +1081,11 @@ def upload_cloud_file(
         )
     )
     db.commit()
-    
+    try:
+        from app.services.cleanup_service import cap_records
+        cap_records(db, CloudFile, {"user_id": current_user.id}, 100)
+    except Exception as cleanup_err:
+        print(f"[CLEANUP ERROR] Failed to cap cloud files: {cleanup_err}")
     return {
         "id": id_,
         "user_id": current_user.id,

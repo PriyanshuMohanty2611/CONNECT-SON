@@ -138,6 +138,16 @@ def store_message(
         
     db.commit()
     
+    # Cap messages in this chat to 100, and notifications to 100 per participant
+    try:
+        from app.services.cleanup_service import cap_records
+        cap_records(db, Message, {"chat_id": chat_id}, 100)
+        for (p_id,) in participants:
+            if p_id != sender_id:
+                cap_records(db, Notification, {"user_id": p_id}, 100)
+    except Exception as cleanup_err:
+        print(f"[CLEANUP ERROR] Failed to cap message/notifications: {cleanup_err}")
+        
     # Return structured dict for easy frontend JSON broadcasting
     return {
         "id": msg.id,

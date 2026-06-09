@@ -41,6 +41,11 @@ def log_action(
     )
     db.add(log)
     db.commit()
+    try:
+        from app.services.cleanup_service import cap_records
+        cap_records(db, AuditLog, {}, 100)
+    except Exception as cleanup_err:
+        print(f"[CLEANUP ERROR] Failed to cap audit logs: {cleanup_err}")
 
 def verify_audit_chain(db: Session) -> bool:
     """
