@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+import io
 from fastapi import UploadFile
 import cloudinary
 import cloudinary.uploader
@@ -22,17 +23,28 @@ def upload_file_to_storage(file: UploadFile, folder: str = "connect_on") -> str:
     # Ensure file upload directory exists
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     
-    if CLOUDINARY_ENABLED:
+    # Read file content safely into memory to avoid closed stream / EOF issues
+    try:
+        file.file.seek(0)
+        file_content = file.file.read()
+        file.file.seek(0) # reset original file stream just in case
+    except Exception as e:
+        print(f"Failed to read file content: {e}")
+        file_content = b""
+    
+    if CLOUDINARY_ENABLED and file_content:
         try:
-            # Upload to Cloudinary
+            # Upload to Cloudinary using a fresh BytesIO stream
             result = cloudinary.uploader.upload(
-                file.file,
+                io.BytesIO(file_content),
                 folder=folder,
                 resource_type="auto",
                 quality="auto",
                 fetch_format="auto"
             )
-            return result.get("secure_url")
+            secure_url = result.get("secure_url")
+            if secure_url:
+                return secure_url
         except Exception as e:
             # Log error and fall back to local storage
             print(f"Cloudinary upload failed: {e}. Falling back to local storage.")
@@ -42,9 +54,13 @@ def upload_file_to_storage(file: UploadFile, folder: str = "connect_on") -> str:
     unique_filename = f"{uuid.uuid4()}{ext}"
     file_path = os.path.join(settings.UPLOAD_DIR, unique_filename)
     
-    # Save file locally
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Save file locally from memory content
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+    except Exception as local_err:
+        print(f"Failed to write file locally: {local_err}")
         
     # Return relative URL - accessible via /static/uploads mounted route
     return f"/static/uploads/{unique_filename}"
+
