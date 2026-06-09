@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 
 # ✉️ Mailer Configuration
-EMAIL_USER = os.getenv("EMAIL_USER", "chat.end2end@gmail.com")
-EMAIL_PASS = os.getenv("EMAIL_PASS", "fgsd xfpy oazb fcyu")
+EMAIL_USER = os.getenv("EMAIL_USER") or "chat.end2end@gmail.com"
+EMAIL_PASS = os.getenv("EMAIL_PASS") or "fgsd xfpy oazb fcyu"
 
 # Common HTML Head with fonts, styles, reset
 HTML_HEADER_TEMPLATE = """
@@ -272,7 +272,30 @@ def _send_email_raw(target_email: str, subject: str, html_body: str):
             server.send_message(msg)
         print(f"[EMAIL SERVICE] Sent email to {target_email} | Subject: {subject}")
     except Exception as e:
-        print(f"[EMAIL SERVICE] [ERROR] Failed to send email to {target_email}: {e}")
+        error_msg = str(e)
+        print(f"[EMAIL SERVICE] [ERROR] Failed to send email to {target_email}: {error_msg}")
+        try:
+            from app.core.database import SessionLocal
+            from app.models.models import EventLog
+            import json
+            import uuid
+            
+            db = SessionLocal()
+            log_record = EventLog(
+                id=str(uuid.uuid4()),
+                event_type="email_error",
+                payload=json.dumps({
+                    "target_email": target_email,
+                    "subject": subject,
+                    "error": error_msg
+                })
+            )
+            db.add(log_record)
+            db.commit()
+            db.close()
+            print(f"[EMAIL SERVICE] Logged email error to database event_logs table.")
+        except Exception as log_err:
+            print(f"[EMAIL SERVICE] [ERROR] Failed to write email error to event_logs: {log_err}")
 
 
 def send_async_email(target_email: str, subject: str, html_body: str):
