@@ -47,7 +47,7 @@ export default function Settings() {
   const [gender, setGender] = useState(user?.profile?.gender || '')
   const [country, setCountry] = useState(user?.profile?.country || '')
   const [presence, setPresence] = useState(user?.profile?.presence_status || 'online')
-  const [themePref, setThemePref] = useState(user?.profile?.theme_preference || 'dark')
+  const [themePref, setThemePref] = useState(user?.profile?.theme_preference || 'tiimi')
 
   // Workspace extended profile states
   const [jobTitle, setJobTitle] = useState('')
@@ -283,7 +283,7 @@ export default function Settings() {
       setGender(user.profile?.gender || '')
       setCountry(user.profile?.country || '')
       setPresence(user.profile?.presence_status || 'online')
-      setThemePref(user.profile?.theme_preference || 'dark')
+      setThemePref(user.profile?.theme_preference || 'tiimi')
       setPublicKey(user.profile?.public_key || null)
 
       // Deserialize bio JSON if available
@@ -319,7 +319,7 @@ export default function Settings() {
   useEffect(() => {
     return () => {
       // Revert data-theme to saved setting if they navigate away without saving
-      const savedTheme = user?.profile?.theme_preference || 'dark'
+      const savedTheme = user?.profile?.theme_preference || 'tiimi'
       document.documentElement.setAttribute('data-theme', savedTheme)
     }
   }, [user])
@@ -826,10 +826,20 @@ export default function Settings() {
                         <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1.5">Theme Vibe</label>
                         <select
                           value={themePref}
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const val = e.target.value
                             setThemePref(val)
                             document.documentElement.setAttribute('data-theme', val)
+                            
+                            // Auto-save theme preference instantly
+                            const success = await updateProfile({
+                              theme_preference: val
+                            })
+                            if (success) {
+                              showNotification('success', 'Theme preference saved successfully!')
+                            } else {
+                              showNotification('error', 'Failed to save theme preference.')
+                            }
                           }}
                           className="w-full px-4 py-2.5 glass-input text-sm bg-[var(--bg-main)]"
                         >

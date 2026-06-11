@@ -101,7 +101,7 @@ class Profile(Base):
     dob = Column(Date, nullable=True)
     gender = Column(String(20), nullable=True)
     country = Column(String(100), nullable=True)
-    theme_preference = Column(String(50), default="light")
+    theme_preference = Column(String(50), default="tiimi")
     presence_status = Column(String(20), default="offline") # online, away, busy, offline, invisible
     last_seen = Column(DateTime, nullable=True)
     public_key = Column(Text, nullable=True) # DH Public Key for E2EE

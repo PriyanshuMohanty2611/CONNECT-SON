@@ -23,7 +23,7 @@ const PageSpinner = () => (
 // Without this it re-mounts on every route transition, resetting the canvas.
 const CinematicBackground = memo(function CinematicBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'light');
+  const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'tiimi');
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -38,7 +38,7 @@ const CinematicBackground = memo(function CinematicBackground() {
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
-          setTheme(document.documentElement.getAttribute('data-theme') || 'light');
+          setTheme(document.documentElement.getAttribute('data-theme') || 'tiimi');
         }
       });
     });
