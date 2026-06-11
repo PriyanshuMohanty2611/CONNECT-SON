@@ -6,6 +6,10 @@ class LoginRequest(BaseModel):
     password: str
     remember_me: bool = False
 
+class Login2FARequest(BaseModel):
+    two_fa_session_id: str
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
 class OTPRequest(BaseModel):
     email: EmailStr
     purpose: str = Field(..., pattern=r"^(registration|password_reset)$")

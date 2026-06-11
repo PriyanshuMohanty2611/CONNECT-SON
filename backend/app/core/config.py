@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", "super_secret_key_connect_on_1234567890_change_me")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./connect_on.db")
@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     # Mailer (Gmail SMTP)
     EMAIL_USER: str = os.getenv("EMAIL_USER", "chat.end2end@gmail.com")
     EMAIL_PASS: str = os.getenv("EMAIL_PASS", "fgsd xfpy oazb fcyu")
+
+    # Cookie & CSRF Security Settings
+    COOKIE_SAMESITE: str = os.getenv("COOKIE_SAMESITE", "lax")
+    COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "False").lower() in ("true", "1")
+    CSRF_COOKIE_NAME: str = "csrf_token"
+    ACCESS_TOKEN_COOKIE_NAME: str = "access_token"
+    REFRESH_TOKEN_COOKIE_NAME: str = "refresh_token"
 
     def __init__(self, **values):
         super().__init__(**values)

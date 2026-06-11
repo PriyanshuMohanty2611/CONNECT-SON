@@ -55,3 +55,58 @@ def decode_token(token: str) -> dict:
         return decoded_payload
     except jwt.JWTError:
         return {}
+
+def set_auth_cookies(response, access_token: str, refresh_token: str, csrf_token: str):
+    samesite = settings.COOKIE_SAMESITE
+    secure = settings.COOKIE_SECURE
+    if samesite.lower() == "none":
+        secure = True
+        
+    response.set_cookie(
+        key=settings.ACCESS_TOKEN_COOKIE_NAME,
+        value=access_token,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    
+    response.set_cookie(
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
+        value=refresh_token,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+    )
+    
+    response.set_cookie(
+        key=settings.CSRF_COOKIE_NAME,
+        value=csrf_token,
+        httponly=False,
+        secure=secure,
+        samesite=samesite,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+    )
+
+def clear_auth_cookies(response):
+    samesite = settings.COOKIE_SAMESITE
+    secure = settings.COOKIE_SECURE
+    if samesite.lower() == "none":
+        secure = True
+        
+    response.delete_cookie(
+        key=settings.ACCESS_TOKEN_COOKIE_NAME,
+        secure=secure,
+        samesite=samesite
+    )
+    response.delete_cookie(
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
+        secure=secure,
+        samesite=samesite
+    )
+    response.delete_cookie(
+        key=settings.CSRF_COOKIE_NAME,
+        secure=secure,
+        samesite=samesite
+    )

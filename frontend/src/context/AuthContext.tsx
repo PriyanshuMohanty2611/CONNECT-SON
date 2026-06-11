@@ -29,7 +29,10 @@ interface AuthContextType {
   loading: boolean
   error: string | null
   registrationEmail: string | null
-  login: (usernameOrEmail: string, password: string, rememberMe?: boolean) => Promise<boolean>
+  twoFaRequired: boolean
+  twoFaSessionId: string | null
+  login: (usernameOrEmail: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; requires2Fa?: boolean }>
+  verify2FaLogin: (code: string, rememberMe?: boolean) => Promise<boolean>
   register: (data: any) => Promise<boolean>
   verifyOTP: (code: string, purpose: 'registration' | 'password_reset', rememberMe?: boolean) => Promise<boolean>
   requestPasswordResetOTP: (email: string) => Promise<boolean>
@@ -48,6 +51,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [registrationEmail, setRegistrationEmail] = useState<string | null>(
     localStorage.getItem('registration_email')
   )
+  const [twoFaRequired, setTwoFaRequired] = useState<boolean>(false)
+  const [twoFaSessionId, setTwoFaSessionId] = useState<string | null>(null)
 
   const loadCurrentUser = async () => {
     const { access } = getTokens()
@@ -104,9 +109,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (usernameOrEmail: string, password: string, rememberMe: boolean = false) => {
     setLoading(true)
     setError(null)
-    const { data, error: apiErr } = await api.post<{ access_token: string; refresh_token: string }>(
+    setTwoFaRequired(false)
+    setTwoFaSessionId(null)
+
+    const { data, error: apiErr } = await api.post<{
+      access_token?: string;
+      refresh_token?: string;
+      token_type: string;
+      two_fa_session_id?: string;
+    }>(
       '/auth/login',
       { username_or_email: usernameOrEmail, password, remember_me: rememberMe }
+    )
+
+    if (apiErr) {
+      setError(apiErr)
+      setLoading(false)
+      return { success: false }
+    }
+
+    if (data) {
+      if (data.token_type === '2fa_required' && data.two_fa_session_id) {
+        setTwoFaRequired(true)
+        setTwoFaSessionId(data.two_fa_session_id)
+        setLoading(false)
+        return { success: true, requires2Fa: true }
+      }
+
+      setTokens(data.access_token!, data.refresh_token!, rememberMe)
+      await loadCurrentUser()
+      return { success: true, requires2Fa: false }
+    }
+
+    setLoading(false)
+    return { success: false }
+  }
+
+  const verify2FaLogin = async (code: string, rememberMe: boolean = false) => {
+    setLoading(true)
+    setError(null)
+
+    if (!twoFaSessionId) {
+      setError('2FA session has expired or is invalid. Please login again.')
+      setLoading(false)
+      return false
+    }
+
+    const { data, error: apiErr } = await api.post<{ access_token: string; refresh_token: string }>(
+      '/auth/login/2fa',
+      { two_fa_session_id: twoFaSessionId, code }
     )
 
     if (apiErr) {
@@ -117,6 +168,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (data) {
       setTokens(data.access_token, data.refresh_token, rememberMe)
+      setTwoFaRequired(false)
+      setTwoFaSessionId(null)
       await loadCurrentUser()
       return true
     }
@@ -222,9 +275,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true
   }
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout')
+    } catch (e) {
+      console.error("Failed to call logout API, clearing frontend tokens anyway", e)
+    }
     clearTokens()
     setUser(null)
+    setTwoFaRequired(false)
+    setTwoFaSessionId(null)
     document.documentElement.setAttribute('data-theme', 'light')
   }
 
@@ -252,7 +312,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         error,
         registrationEmail,
+        twoFaRequired,
+        twoFaSessionId,
         login,
+        verify2FaLogin,
         register,
         verifyOTP,
         requestPasswordResetOTP,

@@ -52,11 +52,23 @@ async def connect(sid, environ, auth=None):
     if auth and "token" in auth:
         token = auth["token"]
     else:
+        # Fallback to cookies first (since we moved to HttpOnly cookies)
+        cookie_header = environ.get("HTTP_COOKIE", "") or environ.get("http_cookie", "")
+        cookies = {}
+        if cookie_header:
+            for c in cookie_header.split(";"):
+                if "=" in c:
+                    parts = c.strip().split("=", 1)
+                    if len(parts) == 2:
+                        cookies[parts[0]] = parts[1]
+        token = cookies.get("access_token")
+        
         # Fallback to query parameters
-        query_string = environ.get("QUERY_STRING", "")
-        qs = parse_qs(query_string)
-        if "token" in qs:
-            token = qs["token"][0]
+        if not token:
+            query_string = environ.get("QUERY_STRING", "")
+            qs = parse_qs(query_string)
+            if "token" in qs:
+                token = qs["token"][0]
             
     if not token:
         print(f"Socket.IO connection rejected: missing token. (sid: {sid})")

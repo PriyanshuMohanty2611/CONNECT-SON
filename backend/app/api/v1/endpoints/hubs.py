@@ -8,7 +8,7 @@ import random
 import uuid
 import json
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query, Cookie, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 
@@ -130,15 +130,38 @@ def disable_2fa(
 
 @router.get("/security/sessions", response_model=List[SessionResponse])
 def list_sessions(
+    request: Request,
+    access_token: Optional[str] = Cookie(None, alias="access_token"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    # Fetch active unrevoked sessions
-    sessions = db.query(UserSession).filter(
-        UserSession.user_id == current_user.id,
-        UserSession.is_revoked == False,
-        UserSession.expires_at > datetime.datetime.utcnow()
-    ).all()
+    current_session_id = None
+    if access_token:
+        from app.core.security import decode_token
+        payload = decode_token(access_token)
+        if payload:
+            current_session_id = payload.get("sid")
+
+    from app.services.session_service import list_user_redis_sessions
+    redis_sessions = list_user_redis_sessions(current_user.id)
+    sessions = []
+    if redis_sessions:
+        session_ids = [s["id"] for s in redis_sessions]
+        sessions = db.query(UserSession).filter(
+            UserSession.id.in_(session_ids),
+            UserSession.is_revoked == False
+        ).all()
+    else:
+        # Fetch active unrevoked sessions from DB
+        sessions = db.query(UserSession).filter(
+            UserSession.user_id == current_user.id,
+            UserSession.is_revoked == False,
+            UserSession.expires_at > datetime.datetime.utcnow()
+        ).all()
+        
+    for s in sessions:
+        s.is_current = (s.id == current_session_id)
+        
     return sessions
 
 @router.delete("/security/sessions/{session_id}")
@@ -155,7 +178,44 @@ def revoke_session(
         raise HTTPException(status_code=404, detail="Session not found.")
     session.is_revoked = True
     db.commit()
+    
+    from app.services.session_service import revoke_redis_session
+    revoke_redis_session(session_id)
+    
     return {"message": "Session revoked. Device has been logged out remotely."}
+
+@router.post("/security/sessions/revoke-all")
+def revoke_all_sessions(
+    request: Request,
+    access_token: Optional[str] = Cookie(None, alias="access_token"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    current_session_id = None
+    if access_token:
+        from app.core.security import decode_token
+        payload = decode_token(access_token)
+        if payload:
+            current_session_id = payload.get("sid")
+            
+    # Revoke other sessions in DB
+    query = db.query(UserSession).filter(
+        UserSession.user_id == current_user.id
+    )
+    if current_session_id:
+        query = query.filter(UserSession.id != current_session_id)
+        
+    query.update({UserSession.is_revoked: True}, synchronize_session=False)
+    db.commit()
+    
+    # Revoke other sessions in Redis
+    from app.services.session_service import list_user_redis_sessions, revoke_redis_session
+    redis_sessions = list_user_redis_sessions(current_user.id)
+    for s in redis_sessions:
+        if s["id"] != current_session_id:
+            revoke_redis_session(s["id"])
+            
+    return {"message": "All other sessions successfully revoked."}
 
 @router.post("/security/chats/{chat_id}/hide")
 def hide_chat(

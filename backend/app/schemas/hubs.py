@@ -193,6 +193,7 @@ class SessionResponse(BaseModel):
     user_id: str
     device_info: Optional[str] = None
     ip_address: Optional[str] = None
+    is_current: Optional[bool] = False
     created_at: datetime
     expires_at: datetime
 

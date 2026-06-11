@@ -10,7 +10,8 @@ from sqlalchemy import (
     Text,
     Integer,
     Table,
-    UUID
+    UUID,
+    Index
 )
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -139,24 +140,32 @@ class FriendRequest(Base):
     __tablename__ = "friend_requests"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    sender_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    receiver_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    sender_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    receiver_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     status = Column(String(20), default="pending") # pending, accepted, rejected
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     sender = relationship("User", foreign_keys=[sender_id], back_populates="friend_requests_sent")
     receiver = relationship("User", foreign_keys=[receiver_id], back_populates="friend_requests_received")
 
+    __table_args__ = (
+        Index("ix_friend_requests_sender_receiver", "sender_id", "receiver_id"),
+    )
+
 
 class Friendship(Base):
     __tablename__ = "friendships"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user1_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    user2_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user1_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    user2_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     is_blocked = Column(Boolean, default=False)
     blocked_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (
+        Index("ix_friendships_user1_user2", "user1_id", "user2_id"),
+    )
 
 
 class BlockedUser(Base):
@@ -212,12 +221,17 @@ class MessageStatus(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     message_id = Column(String(36), ForeignKey("messages.id", ondelete="CASCADE"), index=True, nullable=False)
-    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     status = Column(String(20), nullable=False) # sent, delivered, seen
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     message = relationship("Message", back_populates="statuses")
     user = relationship("User", back_populates="message_statuses")
+
+    __table_args__ = (
+        # Composite index for fast unread count queries: WHERE user_id=X AND status != 'seen'
+        Index("ix_message_statuses_user_status", "user_id", "status"),
+    )
 
 
 class MessageReaction(Base):
@@ -338,6 +352,11 @@ class AuditLog(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     user = relationship("User", foreign_keys=[user_id])
+
+    __table_args__ = (
+        # Composite index for activity feed queries: ORDER BY created_at DESC WHERE user_id IN (...)
+        Index("ix_audit_logs_user_created", "user_id", "created_at"),
+    )
 
 
 class Report(Base):

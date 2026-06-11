@@ -1,0 +1,4 @@
+-- CONNECT-ON Database Backup --
+-- Generated on: 2026-06-09T13:57:26.637910 --
+-- Source DB: postgresql://neondb_owner:npg_M9LbTSH6gEFD@ep-withered-paper-aphrcmnb-pooler.c-7.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require --
+-- Schema structure matches the current head migration. --

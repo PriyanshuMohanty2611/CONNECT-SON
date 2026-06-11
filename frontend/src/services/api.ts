@@ -7,47 +7,45 @@ export interface APIResponse<T> {
 }
 
 export const getTokens = () => {
-  const access = localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
-  const refresh = localStorage.getItem('refresh_token') || sessionStorage.getItem('refresh_token');
-  return { access, refresh };
+  const loggedIn = localStorage.getItem('logged_in') === 'true';
+  return {
+    access: loggedIn ? 'cookie' : null,
+    refresh: loggedIn ? 'cookie' : null,
+  };
 };
 
 export const setTokens = (access: string, refresh: string, rememberMe: boolean = false) => {
-  const storage = rememberMe ? localStorage : sessionStorage;
-  storage.setItem('access_token', access);
-  storage.setItem('refresh_token', refresh);
+  localStorage.setItem('logged_in', 'true');
 };
 
 export const clearTokens = () => {
-  localStorage.removeItem('access_token');
-  localStorage.removeItem('refresh_token');
-  sessionStorage.removeItem('access_token');
-  sessionStorage.removeItem('refresh_token');
+  localStorage.removeItem('logged_in');
 };
 
-async function handleRefresh(): Promise<string | null> {
+function getCookie(name: string): string | null {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
+}
+
+async function handleRefresh(): Promise<boolean> {
   const { refresh } = getTokens();
-  if (!refresh) return null;
+  if (!refresh) return false;
 
   try {
-    const res = await fetch(`${API_BASE_URL}/auth/refresh?refresh_token=${encodeURIComponent(refresh)}`, {
+    const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
     });
     if (!res.ok) {
       clearTokens();
-      return null;
+      return false;
     }
-    const data = await res.json();
-    if (data.access_token && data.refresh_token) {
-      // Keep storage type (local vs session) based on where it was
-      const isLocal = !!localStorage.getItem('refresh_token');
-      setTokens(data.access_token, data.refresh_token, isLocal);
-      return data.access_token;
-    }
-    return null;
+    return true;
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -79,11 +77,15 @@ export const api = {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<APIResponse<T>> {
-    let { access } = getTokens();
     const headers = new Headers(options.headers || {});
 
-    if (access) {
-      headers.set('Authorization', `Bearer ${access}`);
+    // For state-changing requests, inject the CSRF token from the cookie
+    const method = (options.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+      const csrfToken = getCookie('csrf_token');
+      if (csrfToken) {
+        headers.set('X-CSRF-Token', csrfToken);
+      }
     }
 
     if (!(options.body instanceof FormData) && !headers.has('Content-Type')) {
@@ -93,6 +95,7 @@ export const api = {
     const config: RequestInit = {
       ...options,
       headers,
+      credentials: 'include', // Enable cookies in both CORS and same-origin scenarios
     };
 
     try {
@@ -100,11 +103,12 @@ export const api = {
 
       // Handle token expiration / unauthorized
       if (response.status === 401) {
-        const newAccess = await handleRefresh();
-        if (newAccess) {
-          headers.set('Authorization', `Bearer ${newAccess}`);
+        const refreshSuccess = await handleRefresh();
+        if (refreshSuccess) {
+          // Retry the original request (cookies have been updated)
           response = await fetch(`${API_BASE_URL}${endpoint}`, config);
         } else {
+          clearTokens();
           return { data: null, error: 'Unauthorized. Please login again.' };
         }
       }

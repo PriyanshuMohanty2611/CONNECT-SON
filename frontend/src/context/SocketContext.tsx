@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useAuth } from './AuthContext'
-import { getTokens, API_HOST_URL } from '../services/api'
+import { API_HOST_URL } from '../services/api'
 
 interface SocketContextType {
   socket: Socket | null
@@ -29,16 +29,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return
     }
 
-    const { access } = getTokens()
-    if (!access) return
-
     // Initialize Socket.IO connection
     // WS endpoint matches the backend ASGI mount path
     const newSocket = io(API_HOST_URL, {
       path: '/ws',
-      auth: {
-        token: access
-      },
+      withCredentials: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000
     })

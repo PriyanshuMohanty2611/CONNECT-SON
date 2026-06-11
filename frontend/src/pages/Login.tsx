@@ -10,17 +10,20 @@ import FallingPhysicsBackground from '../components/FallingPhysicsBackground'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { login, requestPasswordResetOTP, resetPassword, error: authError } = useAuth()
+  const { login, verify2FaLogin, requestPasswordResetOTP, resetPassword, error: authError } = useAuth()
   
   const [loading, setLoading] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
-  const [mode, setMode] = useState<'login' | 'forgot' | 'reset'>('login')
+  const [mode, setMode] = useState<'login' | 'forgot' | 'reset' | '2fa'>('login')
   const [showPassword, setShowPassword] = useState(false)
 
   // Login inputs
   const [usernameOrEmail, setUsernameOrEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
+
+  // 2FA code input
+  const [twoFaCode, setTwoFaCode] = useState('')
 
   // Forgot password inputs
   const [forgotEmail, setForgotEmail] = useState('')
@@ -40,7 +43,29 @@ export default function Login() {
     }
 
     setLoading(true)
-    const success = await login(usernameOrEmail, password, rememberMe)
+    const result = await login(usernameOrEmail, password, rememberMe)
+    setLoading(false)
+
+    if (result.success) {
+      if (result.requires2Fa) {
+        setMode('2fa')
+      } else {
+        navigate('/')
+      }
+    }
+  }
+
+  const handle2FaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLocalError(null)
+
+    if (!twoFaCode || twoFaCode.length !== 6 || !/^\d+$/.test(twoFaCode)) {
+      setLocalError('Please enter a valid 6-digit verification code.')
+      return
+    }
+
+    setLoading(true)
+    const success = await verify2FaLogin(twoFaCode, rememberMe)
     setLoading(false)
 
     if (success) {
@@ -350,6 +375,64 @@ export default function Login() {
                   >
                     {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Update Password'}
                     {!loading && <Check className="w-4 h-4" />}
+                  </button>
+                </form>
+              </motion.div>
+            )}
+
+            {/* 2FA MODE */}
+            {mode === '2fa' && (
+              <motion.div
+                key="2fa"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.25 }}
+              >
+                <div className="flex items-center gap-2 mb-4">
+                  <button 
+                    type="button"
+                    onClick={() => setMode('login')} 
+                    className="p-1 rounded-lg border border-[var(--border-color)] hover:bg-[var(--border-color)] transition-all cursor-pointer bg-transparent"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs text-[var(--text-secondary)]">Back to Sign In</span>
+                </div>
+
+                <h2 className="text-2xl font-bold mb-1">Two-Factor Authentication</h2>
+                <p className="text-[var(--text-secondary)] text-sm mb-6">Enter the 6-digit authentication code from your authenticator app.</p>
+
+                {displayError && (
+                  <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs flex gap-2 items-center">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{displayError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handle2FaSubmit} className="space-y-4">
+                  <div>
+                    <label className="text-xs font-semibold text-[var(--text-secondary)] block mb-1">6-Digit Code</label>
+                    <input 
+                      type="text" 
+                      name="two-factor-code"
+                      autoComplete="one-time-code"
+                      required
+                      placeholder="000000" 
+                      maxLength={6}
+                      value={twoFaCode}
+                      onChange={(e) => setTwoFaCode(e.target.value)}
+                      className="w-full px-4 py-3 glass-input text-center text-2xl font-black tracking-widest"
+                    />
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    disabled={loading}
+                    className="w-full py-3 mt-6 btn-premium flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Verify & Sign In'}
+                    {!loading && <ArrowRight className="w-4 h-4" />}
                   </button>
                 </form>
               </motion.div>
