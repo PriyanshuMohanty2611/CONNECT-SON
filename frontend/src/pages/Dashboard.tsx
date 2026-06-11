@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, Suspense, lazy, memo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
@@ -15,13 +15,27 @@ import { api } from '../services/api'
 import { NotificationsPopover } from '../components/NotificationsPopover'
 import Sidebar from '../components/Sidebar'
 
-import GamingHub from './GamingHub'
-import RelationshipHub from './RelationshipHub'
-import SmartCalendar from './SmartCalendar'
-import NotesHub from './NotesHub'
-import ProductivityHub from './ProductivityHub'
-import PersonalCloud from './PersonalCloud'
-import SecurityHub from './SecurityHub'
+// ── Lazy-loaded hubs (only load JS when user navigates to that tab) ──────────
+// Before: all 7 hubs loaded eagerly = ~300KB extra on first paint
+// After:  each hub loaded on-demand = faster dashboard startup
+const GamingHub      = lazy(() => import('./GamingHub'))
+const RelationshipHub = lazy(() => import('./RelationshipHub'))
+const SmartCalendar  = lazy(() => import('./SmartCalendar'))
+const NotesHub       = lazy(() => import('./NotesHub'))
+const ProductivityHub = lazy(() => import('./ProductivityHub'))
+const PersonalCloud  = lazy(() => import('./PersonalCloud'))
+const SecurityHub    = lazy(() => import('./SecurityHub'))
+
+// Shared Suspense fallback spinner for lazy hubs
+const HubLoadingFallback = () => (
+  <div className="flex items-center justify-center h-full w-full py-24">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-10 h-10 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+      <p className="text-[var(--text-muted)] text-sm">Loading...</p>
+    </div>
+  </div>
+)
+
 
 interface DiscoverUser extends UserProfile {
   relationship_status: 'none' | 'pending_sent' | 'pending_received' | 'friends'
@@ -72,6 +86,286 @@ const filterPresets = [
 ]
 
 type ActiveTab = 'discovery' | 'chats' | 'stories' | 'settings' | 'admin' | 'gaming' | 'relationship' | 'calendar' | 'notes' | 'productivity' | 'cloud' | 'security'
+
+// ── StoryCard component memoized ─────────────────────────────────────────────
+interface StoryCardProps {
+  group: any
+  idx: number
+  userId: string
+  onClick: (idx: number) => void
+}
+
+const StoryCard = memo(function StoryCard({ group, idx, userId, onClick }: StoryCardProps) {
+  const isUnviewed = group.stories.some((story: any) => !story.views.some((view: any) => view.viewer_id === userId))
+  const avatar = group.user.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'
+  const displayName = group.user.profile?.full_name || group.user.username
+  const isMe = group.user.id === userId
+
+  return (
+    <motion.div 
+      onClick={() => onClick(idx)}
+      className="flex flex-col items-center gap-2.5 cursor-pointer flex-shrink-0"
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+    >
+      <div className={`w-15 h-15 rounded-full p-[2px] bg-gradient-to-tr ${
+        isUnviewed 
+          ? 'from-pink-500 via-violet-500 to-indigo-500' 
+          : 'from-[var(--border-color)] to-[var(--border-color)]'
+      } flex items-center justify-center shadow-[0_0_15px_rgba(139,92,246,0.1)]`}>
+        <div className="w-full h-full rounded-full p-[2px] bg-[var(--bg-main)]">
+          <img 
+            src={avatar} 
+            alt="" 
+            className="w-full h-full rounded-full object-cover"
+          />
+        </div>
+      </div>
+      <span className="text-[9px] font-medium tracking-tight text-[var(--text-secondary)] text-center w-16 truncate">
+        {isMe ? 'My Story' : displayName}
+      </span>
+    </motion.div>
+  )
+})
+
+// ── UserCard component memoized ──────────────────────────────────────────────
+interface UserCardProps {
+  item: DiscoverUser
+  currentStatus: string
+  onReport: (id: string, username: string) => void
+  onAddFriend: (id: string) => void
+  onAcceptRequest: (requestId: string) => void
+  onRejectRequest: (requestId: string) => void
+  onChat: () => void
+}
+
+const UserCard = memo(function UserCard({
+  item,
+  currentStatus,
+  onReport,
+  onAddFriend,
+  onAcceptRequest,
+  onRejectRequest,
+  onChat
+}: UserCardProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: 10 }}
+      whileHover={{ y: -4, borderColor: 'var(--accent)', boxShadow: 'var(--shadow-hover)' }}
+      transition={{ duration: 0.25, ease: "easeInOut" }}
+      className="glass-card overflow-hidden group flex flex-col justify-between hover:border-[var(--accent)] relative"
+    >
+      {/* Subtle internal hover glow */}
+      <div className="absolute inset-0 bg-[var(--accent)]/3 opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none rounded-2xl" />
+
+      <div className="h-24 w-full relative bg-[var(--bg-surface)] border-b border-[var(--border-color)] overflow-hidden">
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => onReport(item.id, item.username)}
+          className="absolute top-3 left-3 p-1.5 rounded-full bg-black/40 hover:bg-black/60 border border-white/10 text-white cursor-pointer z-20 transition-transform"
+          title="Report User"
+        >
+          <Flag className="w-3 h-3 text-amber-400" />
+        </motion.button>
+
+        {item.profile?.cover_url ? (
+          <img 
+            src={item.profile.cover_url} 
+            alt="" 
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-cover bg-center group-hover:scale-105 transition-transform duration-500 opacity-20" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80')" }} />
+        )}
+        
+        <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full border border-white/10">
+          <span className={`w-1.5 h-1.5 rounded-full ${
+            currentStatus === 'online' 
+              ? 'bg-emerald-500' 
+              : currentStatus === 'away'
+              ? 'bg-amber-500'
+              : currentStatus === 'busy'
+              ? 'bg-red-500'
+              : 'bg-slate-500'
+          }`} />
+          <span className="text-[8px] font-black text-white uppercase tracking-wider">
+            {currentStatus}
+          </span>
+        </div>
+      </div>
+
+      <div className="p-5 text-center relative flex-1 flex flex-col justify-between z-10">
+        <div className="w-16 h-16 rounded-full border-4 border-[var(--bg-main)] shadow-[0_4px_12px_rgba(0,0,0,0.5)] overflow-hidden mx-auto mt-[-40px] relative z-10 bg-[var(--bg-card)]">
+          <img 
+            src={item.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'} 
+            alt={item.username} 
+            className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
+          />
+        </div>
+
+        <div className="mt-2.5 flex-1 flex flex-col justify-between">
+          <div>
+            <h4 className="font-bold text-sm tracking-tight text-[var(--text-primary)] hover:text-[var(--accent)] transition-all truncate">
+              {item.profile?.full_name || item.username}
+            </h4>
+            <p className="text-[10px] text-[var(--text-secondary)] mt-0.5 truncate font-medium">@{item.username}</p>
+            
+            <p className="text-[11px] text-[var(--text-secondary)] mt-3 line-clamp-2 px-1 leading-relaxed font-medium">
+              {item.profile?.bio || 'Connect-On security user.'}
+            </p>
+          </div>
+
+          {item.profile?.country && (
+            <div className="mt-4 flex items-center justify-center gap-1 text-[9px] font-bold tracking-wider text-[var(--text-secondary)]">
+              <MapPin className="w-3 h-3 text-rose-500" />
+              <span className="uppercase">{item.profile.country}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
+          {item.relationship_status === 'none' && (
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => onAddFriend(item.id)}
+              className="w-full py-2 rounded-xl border border-[var(--border-color)] hover:border-[var(--accent)] hover:bg-[var(--accent-glow)] text-[var(--text-primary)] hover:text-white text-[11px] font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <UserPlus className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>Add Friend</span>
+            </motion.button>
+          )}
+
+          {item.relationship_status === 'pending_sent' && (
+            <div className="w-full py-2 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] text-[11px] font-bold flex items-center justify-center gap-2">
+              <Clock className="w-3.5 h-3.5" />
+              <span>Pending Request</span>
+            </div>
+          )}
+
+          {item.relationship_status === 'pending_received' && (
+            <div className="w-full flex gap-2">
+              <motion.button 
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => onAcceptRequest(item.request_id || '')}
+                className="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>Accept</span>
+              </motion.button>
+              <motion.button 
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => onRejectRequest(item.request_id || '')}
+                className="px-3 py-2 rounded-xl border border-rose-500/30 hover:bg-rose-500/10 text-rose-500 text-xs font-bold transition-all flex items-center justify-center cursor-pointer"
+              >
+                <UserX className="w-4 h-4" />
+              </motion.button>
+            </div>
+          )}
+
+          {item.relationship_status === 'friends' && (
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={onChat}
+              className="w-full py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-[11px] font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-[var(--accent-glow)]"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Chat Securely</span>
+            </motion.button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
+})
+
+// ── CopilotPanel component memoized ──────────────────────────────────────────
+interface CopilotPanelProps {
+  copilotData: any
+  loadingCopilot: boolean
+}
+
+const CopilotPanel = memo(function CopilotPanel({ copilotData, loadingCopilot }: CopilotPanelProps) {
+  return (
+    <motion.section 
+      whileHover={{ y: -3, borderColor: 'var(--accent)' }}
+      transition={{ type: "spring", stiffness: 350, damping: 25 }}
+      className="relative glass-panel p-5 rounded-3xl space-y-4 overflow-hidden"
+    >
+      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-[50px] pointer-events-none rounded-full" />
+      
+      <div className="flex items-center justify-between relative z-10">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4.5 h-4.5 text-blue-400 animate-pulse" />
+          <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider pl-1">🤖 AI Copilot</h3>
+        </div>
+        {loadingCopilot && (
+          <RefreshCw className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
+        )}
+      </div>
+
+      {copilotData ? (
+        <div className="space-y-4 relative z-10">
+          {/* Summary Bubble */}
+          <div className="bg-[var(--accent-glow)] border border-[var(--accent)]/10 p-3.5 rounded-2xl text-[10.5px] leading-relaxed text-[var(--text-secondary)] font-semibold shadow-inner">
+            {copilotData.summary}
+          </div>
+
+          {/* Summary List */}
+          <div className="bg-[var(--bg-main)]/40 p-3.5 rounded-2xl border border-[var(--border-color)] space-y-2.5">
+            <span className="text-[8.5px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1">Today's Summary</span>
+            <ul className="text-[11px] text-[var(--text-secondary)] font-medium space-y-2.5">
+              <li className="flex items-center justify-between">
+                <span className="flex items-center gap-2">📩 <span className="text-[var(--text-primary)]">Unread messages</span></span>
+                <span className="font-bold text-[var(--text-primary)] font-mono">{copilotData.messages}</span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="flex items-center gap-2">🎮 <span className="text-[var(--text-primary)]">Friends online</span></span>
+                <span className="font-bold text-[var(--text-primary)] font-mono">{copilotData.online_friends}</span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="flex items-center gap-2">📅 <span className="text-[var(--text-primary)]">Upcoming events</span></span>
+                <span className="font-bold text-[var(--text-primary)] font-mono">{copilotData.events}</span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="flex items-center gap-2">🔒 <span className="text-[var(--text-primary)]">Security Health</span></span>
+                <span className={`font-bold font-mono ${copilotData.security_score >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {copilotData.security_score}%
+                </span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Recommendations List */}
+          {copilotData.recommendations && copilotData.recommendations.length > 0 && (
+            <div className="bg-[var(--bg-main)]/40 p-3.5 rounded-2xl border border-[var(--border-color)] space-y-2">
+              <span className="text-[8.5px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1">Recommended Actions</span>
+              <div className="space-y-2">
+                {copilotData.recommendations.map((rec: string, i: number) => (
+                  <div key={i} className="flex items-center gap-2 text-[10.5px] font-bold text-[var(--text-primary)]/90 hover:text-[var(--text-primary)] transition-colors">
+                    <Check className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    <span>{rec}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-[var(--bg-main)]/40 p-4 rounded-2xl border border-[var(--border-color)] space-y-3 relative z-10 animate-pulse">
+          <div className="h-10 bg-white/5 rounded-xl mb-3" />
+          <div className="h-20 bg-white/5 rounded-xl" />
+        </div>
+      )}
+    </motion.section>
+  )
+})
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -313,7 +607,7 @@ export default function Dashboard() {
   const currentUserId = user?.id || ''
 
   // Load all users from backend for discovery
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setLoading(true)
     setError(null)
     const endpoint = `/users/?search=${encodeURIComponent(searchQuery)}&online_only=${onlineOnly}`
@@ -325,7 +619,7 @@ export default function Dashboard() {
       setDiscoverUsers(data)
     }
     setLoading(false)
-  }
+  }, [searchQuery, onlineOnly])
 
   // Trigger search on query or filter toggle
   useEffect(() => {
@@ -335,7 +629,7 @@ export default function Dashboard() {
       }, 300)
       return () => clearTimeout(delayDebounce)
     }
-  }, [searchQuery, onlineOnly, user])
+  }, [loadUsers, user])
 
   const loadStories = async () => {
     setLoadingStories(true)
@@ -505,26 +799,51 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [activeGroupIndex, activeStoryIndex, isPlaying, displayStories])
 
-  const handleAddFriend = async (receiverId: string) => {
+  const handleAddFriend = useCallback(async (receiverId: string) => {
     const { error: apiErr } = await api.post(`/friends/request/${receiverId}`)
     if (!apiErr) {
       loadUsers()
     }
-  }
+  }, [loadUsers])
 
-  const handleAcceptRequest = async (requestId: string) => {
+  const handleAcceptRequest = useCallback(async (requestId: string) => {
     const { error: apiErr } = await api.post(`/friends/accept/${requestId}`)
     if (!apiErr) {
       loadUsers()
     }
-  }
+  }, [loadUsers])
 
-  const handleRejectRequest = async (requestId: string) => {
+  const handleRejectRequest = useCallback(async (requestId: string) => {
     const { error: apiErr } = await api.post(`/friends/reject/${requestId}`)
     if (!apiErr) {
       loadUsers()
     }
-  }
+  }, [loadUsers])
+
+  const handleReportClick = useCallback((id: string, username: string) => {
+    setReportedUserId(id)
+    setReportedUsername(username)
+    setShowReportModal(true)
+  }, [])
+
+  const handleNavigateToChats = useCallback(() => {
+    navigate('/chats')
+  }, [navigate])
+
+  const handleStoryClick = useCallback((idx: number) => {
+    const groups = groupStoriesByUser(displayStories)
+    const group = groups[idx]
+    if (!group) return
+    const isMe = group.user.id === (user?.id || '')
+    
+    setActiveGroupIndex(idx)
+    setActiveStoryIndex(0)
+    setIsPlaying(true)
+    setViewerProgress(0)
+    if (!isMe) {
+      logStoryView(group.stories[0].id)
+    }
+  }, [displayStories, user?.id])
 
   // Moderation state & handlers
   const [showReportModal, setShowReportModal] = useState(false)
@@ -729,47 +1048,15 @@ export default function Dashboard() {
                         <span className="text-[10px] font-medium tracking-tight text-[var(--text-secondary)] mt-1">Add Story</span>
                       </motion.div>
 
-                      {groupStoriesByUser(displayStories).map((group, idx) => {
-                        const isUnviewed = group.stories.some(story => !story.views.some(view => view.viewer_id === user.id))
-                        const avatar = group.user.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'
-                        const displayName = group.user.profile?.full_name || group.user.username
-                        const isMe = group.user.id === user.id
-                        
-                        return (
-                          <motion.div 
-                            key={group.user.id} 
-                            onClick={() => {
-                              setActiveGroupIndex(idx)
-                              setActiveStoryIndex(0)
-                              setIsPlaying(true)
-                              setViewerProgress(0)
-                              if (!isMe) {
-                                logStoryView(group.stories[0].id)
-                              }
-                            }}
-                            className="flex flex-col items-center gap-2.5 cursor-pointer flex-shrink-0"
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                          >
-                            <div className={`w-15 h-15 rounded-full p-[2px] bg-gradient-to-tr ${
-                              isUnviewed 
-                                ? 'from-pink-500 via-violet-500 to-indigo-500' 
-                                : 'from-[var(--border-color)] to-[var(--border-color)]'
-                            } flex items-center justify-center shadow-[0_0_15px_rgba(139,92,246,0.1)]`}>
-                              <div className="w-full h-full rounded-full p-[2px] bg-[var(--bg-main)]">
-                                <img 
-                                  src={avatar} 
-                                  alt="" 
-                                  className="w-full h-full rounded-full object-cover"
-                                />
-                              </div>
-                            </div>
-                            <span className="text-[9px] font-medium tracking-tight text-[var(--text-secondary)] text-center w-16 truncate">
-                              {isMe ? 'My Story' : displayName}
-                            </span>
-                          </motion.div>
-                        )
-                      })}
+                      {groupStoriesByUser(displayStories).map((group, idx) => (
+                        <StoryCard
+                          key={group.user.id}
+                          group={group}
+                          idx={idx}
+                          userId={user.id}
+                          onClick={handleStoryClick}
+                        />
+                      ))}
 
                       {loadingStories && displayStories.length === 0 && (
                         <div className="flex gap-4">
@@ -940,149 +1227,18 @@ export default function Dashboard() {
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <AnimatePresence>
-                          {displayDiscoverUsers.map((item, idx) => {
-                            const currentStatus = onlineStatuses[item.id] || item.profile?.presence_status || 'offline'
-                            return (
-                              <motion.div
-                                key={item.id}
-                                initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                whileHover={{ y: -4, borderColor: 'var(--accent)', boxShadow: 'var(--shadow-hover)' }}
-                                transition={{ duration: 0.25, ease: "easeInOut" }}
-                                className="glass-card overflow-hidden group flex flex-col justify-between hover:border-[var(--accent)] relative"
-                              >
-                                {/* Subtle internal hover glow */}
-                                <div className="absolute inset-0 bg-[var(--accent)]/3 opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-300 pointer-events-none rounded-2xl" />
-
-                                <div className="h-24 w-full relative bg-[var(--bg-surface)] border-b border-[var(--border-color)] overflow-hidden">
-                                  <motion.button
-                                    whileHover={{ scale: 1.1 }}
-                                    whileTap={{ scale: 0.9 }}
-                                    onClick={() => {
-                                      setReportedUserId(item.id)
-                                      setReportedUsername(item.username)
-                                      setShowReportModal(true)
-                                    }}
-                                    className="absolute top-3 left-3 p-1.5 rounded-full bg-black/40 hover:bg-black/60 border border-white/10 text-white cursor-pointer z-20 transition-transform"
-                                    title="Report User"
-                                  >
-                                    <Flag className="w-3 h-3 text-amber-400" />
-                                  </motion.button>
-
-                                  {item.profile?.cover_url ? (
-                                    <img 
-                                      src={item.profile.cover_url} 
-                                      alt="" 
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                    />
-                                  ) : (
-                                    <div className="absolute inset-0 bg-cover bg-center group-hover:scale-105 transition-transform duration-500 opacity-20" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80')" }} />
-                                  )}
-                                  
-                                  <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/40 backdrop-blur-md px-2 py-1 rounded-full border border-white/10">
-                                    <span className={`w-1.5 h-1.5 rounded-full ${
-                                      currentStatus === 'online' 
-                                        ? 'bg-emerald-500' 
-                                        : currentStatus === 'away'
-                                        ? 'bg-amber-500'
-                                        : currentStatus === 'busy'
-                                        ? 'bg-red-500'
-                                        : 'bg-slate-500'
-                                    }`} />
-                                    <span className="text-[8px] font-black text-white uppercase tracking-wider">
-                                      {currentStatus}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div className="p-5 text-center relative flex-1 flex flex-col justify-between z-10">
-                                  <div className="w-16 h-16 rounded-full border-4 border-[var(--bg-main)] shadow-[0_4px_12px_rgba(0,0,0,0.5)] overflow-hidden mx-auto mt-[-40px] relative z-10 bg-[var(--bg-card)]">
-                                    <img 
-                                      src={item.profile?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop'} 
-                                      alt={item.username} 
-                                      className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
-                                    />
-                                  </div>
-
-                                  <div className="mt-2.5 flex-1 flex flex-col justify-between">
-                                    <div>
-                                      <h4 className="font-bold text-sm tracking-tight text-[var(--text-primary)] hover:text-[var(--accent)] transition-all truncate">
-                                        {item.profile?.full_name || item.username}
-                                      </h4>
-                                      <p className="text-[10px] text-[var(--text-secondary)] mt-0.5 truncate font-medium">@{item.username}</p>
-                                      
-                                      <p className="text-[11px] text-[var(--text-secondary)] mt-3 line-clamp-2 px-1 leading-relaxed font-medium">
-                                        {item.profile?.bio || 'Connect-On security user.'}
-                                      </p>
-                                    </div>
-
-                                    {item.profile?.country && (
-                                      <div className="mt-4 flex items-center justify-center gap-1 text-[9px] font-bold tracking-wider text-[var(--text-secondary)]">
-                                        <MapPin className="w-3 h-3 text-rose-500" />
-                                        <span className="uppercase">{item.profile.country}</span>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
-                                    {item.relationship_status === 'none' && (
-                                      <motion.button 
-                                        whileHover={{ scale: 1.02 }}
-                                        whileTap={{ scale: 0.98 }}
-                                        onClick={() => handleAddFriend(item.id)}
-                                        className="w-full py-2 rounded-xl border border-[var(--border-color)] hover:border-[var(--accent)] hover:bg-[var(--accent-glow)] text-[var(--text-primary)] hover:text-white text-[11px] font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
-                                      >
-                                        <UserPlus className="w-3.5 h-3.5 text-[var(--accent)]" />
-                                        <span>Add Friend</span>
-                                      </motion.button>
-                                    )}
-
-                                    {item.relationship_status === 'pending_sent' && (
-                                      <div className="w-full py-2 rounded-xl bg-[var(--bg-surface)] text-[var(--text-secondary)] text-[11px] font-bold flex items-center justify-center gap-2">
-                                        <Clock className="w-3.5 h-3.5" />
-                                        <span>Pending Request</span>
-                                      </div>
-                                    )}
-
-                                    {item.relationship_status === 'pending_received' && (
-                                      <div className="w-full flex gap-2">
-                                        <motion.button 
-                                          whileHover={{ scale: 1.02 }}
-                                          whileTap={{ scale: 0.98 }}
-                                          onClick={() => handleAcceptRequest(item.request_id || '')}
-                                          className="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                                        >
-                                          <UserCheck className="w-3.5 h-3.5" />
-                                          <span>Accept</span>
-                                        </motion.button>
-                                        <motion.button 
-                                          whileHover={{ scale: 1.05 }}
-                                          whileTap={{ scale: 0.95 }}
-                                          onClick={() => handleRejectRequest(item.request_id || '')}
-                                          className="px-3 py-2 rounded-xl border border-rose-500/30 hover:bg-rose-500/10 text-rose-500 text-xs font-bold transition-all flex items-center justify-center cursor-pointer"
-                                        >
-                                          <UserX className="w-4 h-4" />
-                                        </motion.button>
-                                      </div>
-                                    )}
-
-                                    {item.relationship_status === 'friends' && (
-                                      <motion.button 
-                                        whileHover={{ scale: 1.02 }}
-                                        whileTap={{ scale: 0.98 }}
-                                        onClick={() => navigate('/chats')}
-                                        className="w-full py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-[11px] font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-[var(--accent-glow)]"
-                                      >
-                                        <MessageSquare className="w-3.5 h-3.5" />
-                                        <span>Chat Securely</span>
-                                      </motion.button>
-                                    )}
-                                  </div>
-                                </div>
-                              </motion.div>
-                            )
-                          })}
+                          {displayDiscoverUsers.map((item) => (
+                            <UserCard
+                              key={item.id}
+                              item={item}
+                              currentStatus={onlineStatuses[item.id] || item.profile?.presence_status || 'offline'}
+                              onReport={handleReportClick}
+                              onAddFriend={handleAddFriend}
+                              onAcceptRequest={handleAcceptRequest}
+                              onRejectRequest={handleRejectRequest}
+                              onChat={handleNavigateToChats}
+                            />
+                          ))}
                         </AnimatePresence>
                       </div>
                     )}
@@ -1302,77 +1458,10 @@ export default function Dashboard() {
                   </motion.section>
 
                   {/* AI Copilot Widget */}
-                  <motion.section 
-                    whileHover={{ y: -3, borderColor: 'var(--accent)' }}
-                    transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                    className="relative glass-panel p-5 rounded-3xl space-y-4 overflow-hidden"
-                  >
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-[50px] pointer-events-none rounded-full" />
-                    
-                    <div className="flex items-center justify-between relative z-10">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="w-4.5 h-4.5 text-blue-400 animate-pulse" />
-                        <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider pl-1">🤖 AI Copilot</h3>
-                      </div>
-                      {loadingCopilot && (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" />
-                      )}
-                    </div>
-
-                    {copilotData ? (
-                      <div className="space-y-4 relative z-10">
-                        {/* Summary Bubble */}
-                        <div className="bg-[var(--accent-glow)] border border-[var(--accent)]/10 p-3.5 rounded-2xl text-[10.5px] leading-relaxed text-[var(--text-secondary)] font-semibold shadow-inner">
-                          {copilotData.summary}
-                        </div>
-
-                        {/* Summary List */}
-                        <div className="bg-[var(--bg-main)]/40 p-3.5 rounded-2xl border border-[var(--border-color)] space-y-2.5">
-                          <span className="text-[8.5px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1">Today's Summary</span>
-                          <ul className="text-[11px] text-[var(--text-secondary)] font-medium space-y-2.5">
-                            <li className="flex items-center justify-between">
-                              <span className="flex items-center gap-2">📩 <span className="text-[var(--text-primary)]">Unread messages</span></span>
-                              <span className="font-bold text-[var(--text-primary)] font-mono">{copilotData.messages}</span>
-                            </li>
-                            <li className="flex items-center justify-between">
-                              <span className="flex items-center gap-2">🎮 <span className="text-[var(--text-primary)]">Friends online</span></span>
-                              <span className="font-bold text-[var(--text-primary)] font-mono">{copilotData.online_friends}</span>
-                            </li>
-                            <li className="flex items-center justify-between">
-                              <span className="flex items-center gap-2">📅 <span className="text-[var(--text-primary)]">Upcoming events</span></span>
-                              <span className="font-bold text-[var(--text-primary)] font-mono">{copilotData.events}</span>
-                            </li>
-                            <li className="flex items-center justify-between">
-                              <span className="flex items-center gap-2">🔒 <span className="text-[var(--text-primary)]">Security Health</span></span>
-                              <span className={`font-bold font-mono ${copilotData.security_score >= 75 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                                {copilotData.security_score}%
-                              </span>
-                            </li>
-                          </ul>
-                        </div>
-
-                        {/* Recommendations List */}
-                        {copilotData.recommendations && copilotData.recommendations.length > 0 && (
-                          <div className="bg-[var(--bg-main)]/40 p-3.5 rounded-2xl border border-[var(--border-color)] space-y-2">
-                            <span className="text-[8.5px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block mb-1">Recommended Actions</span>
-                            <div className="space-y-2">
-                              {copilotData.recommendations.map((rec: string, i: number) => (
-                                <div key={i} className="flex items-center gap-2 text-[10.5px] font-bold text-[var(--text-primary)]/90 hover:text-[var(--text-primary)] transition-colors">
-                                  <Check className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                                  <span>{rec}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="bg-[var(--bg-main)]/40 p-4 rounded-2xl border border-[var(--border-color)] space-y-3 relative z-10 animate-pulse">
-                        <div className="h-10 bg-white/5 rounded-xl mb-3" />
-                        <div className="h-20 bg-white/5 rounded-xl" />
-                      </div>
-                    )}
-                  </motion.section>
+                  <CopilotPanel
+                    copilotData={copilotData}
+                    loadingCopilot={loadingCopilot}
+                  />
 
                   {/* Security Guard Checklist Card */}
                   <motion.section 
@@ -1634,13 +1723,16 @@ export default function Dashboard() {
               </section>
             )}
 
-            {activeTab === 'gaming' && <GamingHub />}
-            {activeTab === 'relationship' && <RelationshipHub />}
-            {activeTab === 'calendar' && <SmartCalendar />}
-            {activeTab === 'notes' && <NotesHub />}
-            {activeTab === 'productivity' && <ProductivityHub />}
-            {activeTab === 'cloud' && <PersonalCloud />}
-            {activeTab === 'security' && <SecurityHub />}
+            {/* Lazy-loaded hubs: wrapped in Suspense so the spinner shows while chunk downloads */}
+            <Suspense fallback={<HubLoadingFallback />}>
+              {activeTab === 'gaming'        && <GamingHub />}
+              {activeTab === 'relationship'  && <RelationshipHub />}
+              {activeTab === 'calendar'      && <SmartCalendar />}
+              {activeTab === 'notes'         && <NotesHub />}
+              {activeTab === 'productivity'  && <ProductivityHub />}
+              {activeTab === 'cloud'         && <PersonalCloud />}
+              {activeTab === 'security'      && <SecurityHub />}
+            </Suspense>
           </div>
         </div>
       </main>

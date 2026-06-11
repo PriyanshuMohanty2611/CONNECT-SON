@@ -1,13 +1,27 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, memo, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+
+// Critical path pages: eagerly loaded (they are needed before auth resolves)
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Register from './pages/Register'
-import Settings from './pages/Settings'
-import Admin from './pages/Admin'
-import Chat from './pages/Chat'
 
-function CinematicBackground() {
+// Heavy pages: lazy loaded to cut initial bundle size
+const Settings = lazy(() => import('./pages/Settings'))
+const Admin    = lazy(() => import('./pages/Admin'))
+const Chat     = lazy(() => import('./pages/Chat'))
+
+// Simple full-page loading spinner for lazy route fallback
+const PageSpinner = () => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-main, #0f0f12)' }}>
+    <div style={{ width: 40, height: 40, border: '4px solid #6366f1', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+  </div>
+)
+
+// React.memo: CinematicBackground never re-renders unless theme prop changes.
+// Without this it re-mounts on every route transition, resetting the canvas.
+const CinematicBackground = memo(function CinematicBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'light');
 
@@ -246,22 +260,24 @@ function CinematicBackground() {
       />
     </div>
   );
-}
+}) // end React.memo(CinematicBackground)
 
 function App() {
   return (
     <BrowserRouter>
       <CinematicBackground />
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/chats" element={<Chat />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/admin" element={<Admin />} />
-        {/* Fallback route */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <Suspense fallback={<PageSpinner />}>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/chats" element={<Chat />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/admin" element={<Admin />} />
+          {/* Fallback route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }
