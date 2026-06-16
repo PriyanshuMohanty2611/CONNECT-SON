@@ -272,6 +272,7 @@ function App() {
           <Route path="/chats" element={<Chat />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/reset-password" element={<Login />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin" element={<Admin />} />
           {/* Fallback route */}

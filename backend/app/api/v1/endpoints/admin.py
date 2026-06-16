@@ -58,10 +58,12 @@ def action_report(
     if req.suspend_user and reported_user:
         # Toggling is_verified to False suspends the user's login access
         reported_user.is_verified = False
-        # Revoke all their active sessions immediately
+        # Revoke all their active sessions immediately in DB and Redis
         db.query(UserSession).filter(UserSession.user_id == reported_user.id).update(
             {UserSession.is_revoked: True}, synchronize_session=False
         )
+        from app.services.session_service import revoke_all_user_redis_sessions
+        revoke_all_user_redis_sessions(reported_user.id)
         log_action(db, f"admin_suspend_user_{reported_user.username}", current_admin.id)
         
     db.commit()
@@ -142,11 +144,13 @@ def toggle_user_verification(
         
     user.is_verified = not user.is_verified
     
-    # If suspended, revoke all active sessions immediately
+    # If suspended, revoke all active sessions immediately in DB and Redis
     if not user.is_verified:
         db.query(UserSession).filter(UserSession.user_id == user.id).update(
             {UserSession.is_revoked: True}, synchronize_session=False
         )
+        from app.services.session_service import revoke_all_user_redis_sessions
+        revoke_all_user_redis_sessions(user.id)
         
     db.commit()
     status_str = "activated" if user.is_verified else "deactivated/suspended"

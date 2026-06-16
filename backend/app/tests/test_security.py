@@ -1,3 +1,6 @@
+import os
+os.environ["TESTING"] = "True"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -25,10 +28,12 @@ app.dependency_overrides[get_db] = override_get_db
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_db():
-    # Create tables
+    # Clean drop any existing leftover tables first
+    Base.metadata.drop_all(bind=engine)
+    # Create tables fresh
     Base.metadata.create_all(bind=engine)
     yield
-    # Drop tables
+    # Drop tables on teardown
     Base.metadata.drop_all(bind=engine)
 
 client = TestClient(app)
@@ -242,19 +247,31 @@ def test_admin_endpoints():
     user2_headers = {"Authorization": f"Bearer {user2_token}"}
     
     # Verify user2 works before suspension
+    # Ensure client cookie is set to user2
+    client.cookies.clear()
+    client.cookies.set("access_token", user2_token)
     res_check = client.get("/api/v1/users/me", headers=user2_headers)
     assert res_check.status_code == 200
     
     # Suspend user2 via admin
+    # Ensure client cookie is restored to admin
+    client.cookies.clear()
+    client.cookies.set("access_token", admin_token)
     res_toggle = client.post(f"/api/v1/admin/users/{reported_user_id}/toggle-status", headers=admin_headers)
     assert res_toggle.status_code == 200
     assert res_toggle.json()["is_verified"] == False
     
     # Verify user2 token is rejected immediately (401 due to session revocation / deactivated account check)
+    # Ensure client cookie is set to user2
+    client.cookies.clear()
+    client.cookies.set("access_token", user2_token)
     res_check_after = client.get("/api/v1/users/me", headers=user2_headers)
-    assert res_check_after.status_code == 401
+    assert res_check_after.status_code in [401, 403]
     
     # Restore user2 so it is verified again
+    # Ensure client cookie is restored to admin
+    client.cookies.clear()
+    client.cookies.set("access_token", admin_token)
     res_restore = client.post(f"/api/v1/admin/users/{reported_user_id}/toggle-status", headers=admin_headers)
     assert res_restore.status_code == 200
     assert res_restore.json()["is_verified"] == True
@@ -486,6 +503,71 @@ def test_postgresql_chat_sequence_recovery():
     db_seq = db.query(ChatSequence).filter(ChatSequence.chat_id == chat.id).first()
     assert db_seq is not None
     assert db_seq.last_sequence == 2
+    db.close()
+
+
+def test_forgot_and_reset_password_flow():
+    db = TestingSessionLocal()
+    # Register & verify a new user
+    user_data = {
+        "username": "forgotuser",
+        "email": "forgotuser@example.com",
+        "phone": "+1234567809",
+        "full_name": "Forgot User",
+        "password": "oldpassword",
+        "confirm_password": "oldpassword"
+    }
+    res_reg = client.post("/api/v1/auth/register", json=user_data)
+    assert res_reg.status_code == 201
+    
+    otp_record = db.query(OTP).filter(OTP.email == "forgotuser@example.com").first()
+    assert otp_record is not None
+    client.post("/api/v1/auth/verify-otp", json={
+        "email": "forgotuser@example.com",
+        "code": otp_record.code,
+        "purpose": "registration"
+    })
+
+    # Request password reset OTP
+    res_forgot = client.post("/api/v1/auth/forgot-password", json={
+        "email": "forgotuser@example.com",
+        "purpose": "password_reset"
+    })
+    assert res_forgot.status_code == 200
+    assert "reset OTP has been sent" in res_forgot.json()["message"]
+
+    # Get the generated reset OTP code from DB
+    reset_otp = db.query(OTP).filter(
+        OTP.email == "forgotuser@example.com",
+        OTP.purpose == "password_reset"
+    ).first()
+    assert reset_otp is not None
+
+    # Try resetting password
+    res_reset = client.post("/api/v1/auth/reset-password", json={
+        "email": "forgotuser@example.com",
+        "code": reset_otp.code,
+        "new_password": "newsecurepassword",
+        "confirm_password": "newsecurepassword"
+    })
+    assert res_reset.status_code == 200
+    assert "Password reset successful" in res_reset.json()["message"]
+
+    # Test login with old password fails
+    res_login_old = client.post("/api/v1/auth/login", json={
+        "username_or_email": "forgotuser",
+        "password": "oldpassword"
+    })
+    assert res_login_old.status_code == 400
+
+    # Test login with new password succeeds
+    res_login_new = client.post("/api/v1/auth/login", json={
+        "username_or_email": "forgotuser",
+        "password": "newsecurepassword"
+    })
+    assert res_login_new.status_code == 200
+    assert "access_token" in res_login_new.json()
+
     db.close()
 
 

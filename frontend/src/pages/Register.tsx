@@ -345,7 +345,11 @@ export default function Register() {
                         name="otp"
                         maxLength={1}
                         value={data}
-                        ref={(el) => { otpRefs.current[index] = el }}
+                        ref={(el) => {
+                          if (el) {
+                            otpRefs.current[index] = el;
+                          }
+                        }}
                         onChange={(e) => handleOtpChange(e.target, index)}
                         onKeyDown={(e) => handleOtpKeyDown(e, index)}
                         onFocus={(e) => e.target.select()}

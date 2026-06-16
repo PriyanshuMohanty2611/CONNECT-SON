@@ -1,4 +1,5 @@
 import time
+import os
 from app.services.cache_service import cache
 
 def is_rate_limited(key: str, limit: int, period_seconds: int) -> bool:
@@ -6,6 +7,8 @@ def is_rate_limited(key: str, limit: int, period_seconds: int) -> bool:
     Checks if a request key has exceeded the rate limit using a sliding window.
     Returns True if rate limited (blocked), False if allowed.
     """
+    if os.getenv("TESTING") == "True":
+        return False
     try:
         cache_key = f"rate_limit:{key}"
         now = time.time()

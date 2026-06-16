@@ -10,11 +10,13 @@ import FallingPhysicsBackground from '../components/FallingPhysicsBackground'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { login, verify2FaLogin, requestPasswordResetOTP, resetPassword, error: authError } = useAuth()
+  const { login, verify2FaLogin, requestPasswordResetOTP, resetPassword, registrationEmail, error: authError } = useAuth()
   
   const [loading, setLoading] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
-  const [mode, setMode] = useState<'login' | 'forgot' | 'reset' | '2fa'>('login')
+  const [mode, setMode] = useState<'login' | 'forgot' | 'reset' | '2fa'>(() => {
+    return window.location.pathname === '/reset-password' ? 'reset' : 'login'
+  })
   const [showPassword, setShowPassword] = useState(false)
 
   // Login inputs
@@ -308,7 +310,7 @@ export default function Login() {
               >
                 <h2 className="text-2xl font-bold mb-1">Reset Password</h2>
                 <p className="text-[var(--text-secondary)] text-sm mb-6">
-                  Check your console log/email for the reset code sent to <strong className="text-white">{forgotEmail}</strong>.
+                  Check your console log/email for the reset code sent to <strong className="text-white">{forgotEmail || registrationEmail}</strong>.
                 </p>
 
                 {displayError && (
